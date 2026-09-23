@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "PowerShell 工具",
+    "description": "基于 bash 执行器 seam 的面向模型 pwsh 工具。"
+  }
+}

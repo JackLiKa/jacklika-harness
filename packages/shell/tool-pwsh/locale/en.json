@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "PowerShell Tool",
+    "description": "Model-facing pwsh tool over the bash executor seam."
+  }
+}

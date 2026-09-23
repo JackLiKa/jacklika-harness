@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Bash 工具",
+    "description": "面向模型的 bash 工具，支持可选的通用后台任务与沙箱升级。"
+  }
+}

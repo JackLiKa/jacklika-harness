@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent 指令",
+    "description": "读取 AGENTS.md/CLAUDE.md 指令文件的工作区上下文加载器。"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Bash Tool",
+    "description": "Model-facing bash tool with optional generic background-job and sandbox-escalation support."
+  }
+}
