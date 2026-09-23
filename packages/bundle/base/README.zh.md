@@ -57,6 +57,31 @@ kind: "package-bundle"
 
 要改变基于本核心构建的 profile 提供的内容——不同的默认模型、更严格的权限模式、更多或更少的工具——请编辑 profile 的 `cordis.patch.yml` 或添加后面的组合包。每个 patch 条目会替换目标的整个配置，因此请重述每个想保留的设置。保持沙箱化文件系统提供方作为唯一的文件写入路径：在其之上再添加普通文件系统提供方会导致 profile 加载失败。
 
+### 切换默认提供方或模型
+
+基础组合包读取两个环境变量，让你无需编辑 patch 文件即可更改默认提供方和模型：
+
+| 变量 | 默认值 | 含义 |
+|---|---|---|
+| `DSH_DEFAULT_PROVIDER` | `deepseek-official` | 新建 agent 的默认提供方路由 |
+| `DSH_DEFAULT_MODEL` | `deepseek-v4-flash` | 新建 agent 的默认模型 id |
+
+在启动 `dsh` 前，于 shell 环境或启动工作目录的 `.env` 中设置它们。
+
+### 启用其他提供方
+
+基础组合包挂载了 pi-ai 多提供方适配器，当启动环境中存在对应的 API key 时自动注册路由：
+
+| 提供方 | 必需的 key | 可选的 endpoint 覆盖 |
+|---|---|---|
+| OpenAI | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
+| Anthropic Claude | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
+| Wizmacau Ollama | `WIZMACAU_API_KEY` 或 `WIZMACAU_BASE_URL` | `WIZMACAU_BASE_URL` |
+
+配置中只保存凭证引用（如 `OPENAI_API_KEY`），实际 key 在每次请求时通过凭证 seam 解析，因此可以放在 `.env` 或受管凭证存储里。若要添加列表之外的提供方，可通过自定义的 `llm-pi-ai:` settings 区，或在 profile patch 中编辑 `llm-pi-ai` 行来实现。
+
+Wizmacau 路由是一个手写的 OpenAI-compatible Ollama 端点。当 `WIZMACAU_API_KEY` 或 `WIZMACAU_BASE_URL` 存在时注册，默认端点是 `http://192.168.10.28:11434/v1`；省略 key 时请求不携带 `Authorization` 头。
+
 -----
 
 <a id="understand-the-implementation"></a>

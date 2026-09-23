@@ -2767,6 +2767,29 @@ export interface Config {
 
 来源：[`packages/lsp/tool-lsp/src/index.ts:57`](../packages/lsp/tool-lsp/src/index.ts)
 
+<a id="deepseek-aidsh-tool-memory-filesystem"></a>
+
+## `@deepseek-ai/dsh-tool-memory-filesystem`
+
+需要：`tools`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Absolute or process-relative root of the Markdown vault. */
+  vaultRoot?: string
+  /** File extensions to treat as notes. */
+  extensions?: string[]
+  /** Maximum depth to follow `[[link]]` references when reading a note. */
+  maxLinkDepth?: number
+  /** Maximum number of search hits to return. */
+  maxSearchResults?: number
+}
+```
+
+来源：[`packages/fs/tool-memory-filesystem/src/index.ts:29`](../packages/fs/tool-memory-filesystem/src/index.ts)
+
+
 <a id="deepseek-aidsh-tool-pwsh"></a>
 
 ## `@deepseek-ai/dsh-tool-pwsh`

@@ -57,6 +57,31 @@ On macOS and Linux you get the bash shell tools; on Windows you get the PowerShe
 
 To change what a profile built on this core provides — a different default model, a stricter permission mode, extra or fewer tools — edit your profile's `cordis.patch.yml` or add a later bundle. Each patch entry replaces the target's whole configuration, so restate every setting you want to keep. Keep the sandboxed filesystem provider as the single file-write path: adding the plain filesystem provider on top of it makes the profile fail to load.
 
+### Switching the default provider or model
+
+The base bundle reads two environment variables so you can change the default provider and model without editing a patch file:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DSH_DEFAULT_PROVIDER` | `deepseek-official` | Default provider route for new agents |
+| `DSH_DEFAULT_MODEL` | `deepseek-v4-flash` | Default model id for new agents |
+
+Set them in your shell or in the `.env` at the invocation working directory before launching `dsh`.
+
+### Enabling additional providers
+
+The base bundle mounts the pi-ai multi-provider adapter and auto-registers routes when the matching API key is present in the launching environment:
+
+| Provider | Required key | Optional endpoint override |
+|---|---|---|
+| OpenAI | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
+| Anthropic Claude | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
+| Wizmacau Ollama | `WIZMACAU_API_KEY` or `WIZMACAU_BASE_URL` | `WIZMACAU_BASE_URL` |
+
+Only the credential reference (`OPENAI_API_KEY`, etc.) lives in configuration; the actual key is resolved per request through the credential seam, so it can stay in `.env` or the managed credential store. To add a provider not in this list, supply a custom `llm-pi-ai:` settings section or edit the `llm-pi-ai` row in your profile patch.
+
+The Wizmacau route is a hand-declared OpenAI-compatible Ollama endpoint. It registers when `WIZMACAU_API_KEY` or `WIZMACAU_BASE_URL` is present and defaults to `http://192.168.10.28:11434/v1`; omitting the key sends requests without an `Authorization` header.
+
 -----
 
 <a id="understand-the-implementation"></a>

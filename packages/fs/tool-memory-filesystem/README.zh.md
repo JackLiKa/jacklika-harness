@@ -1,0 +1,115 @@
+---
+description: "基于本地 Markdown 仓库的面向模型的 wiki/记忆工具，支持 Obsidian 风格双向链接和 YAML frontmatter。"
+kind: "package-reference"
+---
+
+# @deepseek-ai/dsh-tool-memory-filesystem
+
+[English](README.md) | 中文
+
+## 概述
+
+`dsh-tool-memory-filesystem` 让 agent 可以读取、搜索和追加本地 Markdown 仓库中的笔记。笔记是普通的 `.md` 文件，可包含 YAML frontmatter 和 Obsidian 风格 `[[link]]` 链接。部署时以 Cordis 插件形式挂载并配置 `vaultRoot`；模型会看到 `wiki_read`、`wiki_search` 和 `wiki_write` 三个工具。MVP 不需要向量数据库，只使用文件名和关键词搜索，并通过链接跟随保证上下文完整。
+
+## 目录
+
+- [使用](#use-this-package)
+- [实现说明](#understand-the-implementation)
+- [模型体验](#model-experience)
+- [已知限制与待办](#known-limitations-and-deferred-work)
+- [开发备注](#dev-note)
+
+-----
+
+<a id="use-this-package"></a>
+## 使用
+
+在 profile 或 patch 文件中挂载插件：
+
+```yaml
+- name: '@deepseek-ai/dsh-tool-memory-filesystem'
+  config:
+    vaultRoot: /path/to/obsidian-vault
+```
+
+### 配置仓库
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `vaultRoot` | `string` | `process.cwd()` | Markdown 仓库根目录，绝对或相对路径。 |
+| `extensions` | `string[]` | `['.md']` | 视为笔记的文件扩展名。 |
+| `maxLinkDepth` | `number` | `1` | `wiki_read` 解析 `[[link]]` 的最大深度。 |
+| `maxSearchResults` | `number` | `20` | `wiki_search` 返回的最大结果数。 |
+
+### 工具
+
+- `wiki_read(id)` — 按仓库相对路径读取笔记，返回 frontmatter、正文、链接和已解析的链接笔记。
+- `wiki_search(query)` — 按标题、id、正文关键词搜索；结果包含反向链接数量。
+- `wiki_write(id, content, mode?)` — 创建或追加笔记。追加模式保留 frontmatter 并添加时间戳标题。
+
+### 安全
+
+所有路径都必须在 `vaultRoot` 下；越界路径会被拒绝。该插件不通过 `ctx.fs` 访问文件，因此不继承文件沙箱策略；访问权限由 OS 文件权限和本插件的越界检查共同控制。
+
+-----
+
+<a id="understand-the-implementation"></a>
+## 实现说明
+
+本包是一个没有运行时服务的 Cordis 函数插件，只在 `ctx.tools` 上注册三个类型化工具。每个工具都通过 `node:fs/promises` 直接读取 Markdown 文件，并借助 `path.resolve` + 前缀检查保持在 `vaultRoot` 内。YAML frontmatter 使用 `js-yaml` 解析；`[[link|alias]]` 形式的引用会提取管道符前的目标。搜索时从仓库内容构建临时索引，并按反向链接数量排序。
+
+-----
+
+<a id="model-experience"></a>
+## 模型体验
+
+### Tool schema
+
+#### 模型看到的内容
+
+模型看到的是生成的 [`wiki_read`、`wiki_search` 和 `wiki_write` schema](../../../docs/tool-catalog.zh.md#deepseek-aidsh-tool-memory-filesystem)。工具描述会告知模型：笔记是带 YAML frontmatter 和 Obsidian 风格 `[[link]]` 链接的 Markdown 文件，`wiki_read` 会按配置深度跟随链接。
+
+##### `wiki_read` 的完整描述
+
+```markdown
+Read one Markdown note from the wiki vault, optionally following Obsidian-style [[link]] references up to the configured depth. Returns the note id, frontmatter, body, and linked notes.
+```
+
+##### `wiki_search` 的完整描述
+
+```markdown
+Search the wiki vault by note title or body keyword. Returns matching note ids, titles, and backlink counts. Use this before asking the user which note to read.
+```
+
+##### `wiki_write` 的完整描述
+
+```markdown
+Create a new note or append to an existing note in the wiki vault. The path is relative to the vault root. When appending, the new content is inserted at the end of the body after a timestamp header.
+```
+
+#### Token 影响
+
+`wiki_read` 返回请求笔记的完整正文，以及 `maxLinkDepth` 范围内所有可达链接笔记的正文。长笔记或密集链接图可能显著增加下次请求的 token 数。`wiki_search` 只返回有限的结果元数据。
+
+#### KV Cache 影响
+
+独立。该插件仅提供工具结果，不改变请求头、系统提示或工具列表。
+
+## 已知限制与待办
+
+<a id="known-limitations-and-deferred-work"></a>
+
+- **未接入沙箱策略** — 插件直接读取文件，绕过 `ctx.fs` 沙箱与审批机制。未来可以提供委托给 `ctx.fs` 的 provider 以继承策略。
+- **无向量搜索** — 仅支持关键词搜索。未来可新增 `tool-memory-vector` 包提供基于 embedding 的检索，而无需修改本包。
+- **不支持图片或二进制附件** — 笔记按 UTF-8 文本处理。附件应继续使用 attachment 体系。
+- **无并发写协调** — 对同一笔记的并发 `wiki_write` 可能产生竞态。MVP 定位为单 agent、单进程使用。
+
+<a id="dev-note"></a>
+### 开发备注
+
+<details>
+<summary>维护者工作上下文 — 点击展开</summary>
+
+无。
+
+</details>

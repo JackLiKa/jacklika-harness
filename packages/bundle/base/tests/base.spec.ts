@@ -49,6 +49,90 @@ describe('dsh-base bundle', () => {
     expect(manifest.dependencies).toHaveProperty('@deepseek-ai/dsh-web-fetch-http')
   })
 
+  it('lets the launching environment choose the default provider and model', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const parsed = yaml.load(
+      readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'),
+      { schema: entryListSchema },
+    )
+    if (!Array.isArray(parsed)) throw new TypeError('base patch must parse to a patch list')
+    const rows = parsed.flatMap((patch): Record<string, unknown>[] =>
+      typeof patch === 'object' && patch !== null
+        ? (patch as { insert?: Record<string, unknown>[] }).insert ?? []
+        : [],
+    )
+    const row = rows.find(candidate => candidate.id === 'agent-default-model')
+    if (row === undefined) throw new Error('base patch must mount agent-default-model')
+    const config = row.config as Record<string, { __jsExpr?: string }>
+    const providerExpr = config.provider?.__jsExpr
+    const modelExpr = config.model?.__jsExpr
+    expect(providerExpr).toBeDefined()
+    expect(modelExpr).toBeDefined()
+    expect(evaluate({ process: { env: {} } }, providerExpr!)).toBe('deepseek-official')
+    expect(evaluate({ process: { env: { DSH_DEFAULT_PROVIDER: 'openai' } } }, providerExpr!)).toBe('openai')
+    expect(evaluate({ process: { env: {} } }, modelExpr!)).toBe('deepseek-v4-flash')
+    expect(evaluate({ process: { env: { DSH_DEFAULT_MODEL: 'gpt-4o-mini' } } }, modelExpr!)).toBe('gpt-4o-mini')
+  })
+
+  it('auto-detects pi-ai provider routes from well-known API-key env vars', () => {
+    const root = fileURLToPath(new URL('..', import.meta.url))
+    const parsed = yaml.load(
+      readFileSync(resolve(root, 'cordis.patch.yml'), 'utf8'),
+      { schema: entryListSchema },
+    )
+    if (!Array.isArray(parsed)) throw new TypeError('base patch must parse to a patch list')
+    const rows = parsed.flatMap((patch): Record<string, unknown>[] =>
+      typeof patch === 'object' && patch !== null
+        ? (patch as { insert?: Record<string, unknown>[] }).insert ?? []
+        : [],
+    )
+    const row = rows.find(candidate => candidate.id === 'llm-pi-ai')
+    if (row === undefined) throw new Error('base patch must mount llm-pi-ai')
+    const config = row.config as { providers?: { __jsExpr?: string } }
+    const expr = config.providers?.__jsExpr
+    expect(expr).toBeDefined()
+    const emptyEnv = evaluate({ process: { env: {} } }, expr!) as Record<string, unknown>
+    expect(emptyEnv).toEqual({})
+    const openaiOnly = evaluate({ process: { env: { OPENAI_API_KEY: 'sk-openai' } } }, expr!) as Record<string, unknown>
+    expect(openaiOnly).toHaveProperty('openai')
+    expect(openaiOnly.openai).toMatchObject({ apiKeyEnv: 'OPENAI_API_KEY' })
+    const withBaseUrl = evaluate({
+      process: {
+        env: {
+          OPENAI_API_KEY: 'sk-openai',
+          OPENAI_BASE_URL: 'https://proxy.example.com/v1',
+          ANTHROPIC_API_KEY: 'sk-anthropic',
+        },
+      },
+    }, expr!) as Record<string, Record<string, unknown>>
+    expect(withBaseUrl.openai).toMatchObject({ apiKeyEnv: 'OPENAI_API_KEY', baseURL: 'https://proxy.example.com/v1' })
+    expect(withBaseUrl.anthropic).toMatchObject({ apiKeyEnv: 'ANTHROPIC_API_KEY' })
+    const wizmacauOnly = evaluate({
+      process: {
+        env: {
+          WIZMACAU_BASE_URL: 'http://192.168.10.28:11434/v1',
+        },
+      },
+    }, expr!) as { wizmacau: Record<string, unknown> }
+    expect(wizmacauOnly.wizmacau).toMatchObject({
+      api: 'openai-completions',
+      displayName: 'Wizmacau Ollama',
+      baseURL: 'http://192.168.10.28:11434/v1',
+    })
+    expect(wizmacauOnly.wizmacau.models).toHaveLength(3)
+    const wizmacauWithKey = evaluate({
+      process: {
+        env: {
+          WIZMACAU_API_KEY: 'sk-wizmacau',
+        },
+      },
+    }, expr!) as { wizmacau: Record<string, unknown> }
+    expect(wizmacauWithKey.wizmacau).toMatchObject({
+      apiKeyEnv: 'WIZMACAU_API_KEY',
+      baseURL: 'http://192.168.10.28:11434/v1',
+    })
+  })
+
   it('gates each shell stack by platform with a symmetric disabled expression', () => {
     const root = fileURLToPath(new URL('..', import.meta.url))
     const parsed = yaml.load(

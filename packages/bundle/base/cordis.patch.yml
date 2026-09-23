@@ -72,11 +72,14 @@
 
     # The transport-independent default for Agents created by entry points.
     # Settings may supply a saved selection; consumers read it at creation time.
+    # The launching environment can override the base default without editing a
+    # patch file, so a deployment that routes through another provider sets the
+    # route and model once in its environment.
     - id: agent-default-model
       name: '@deepseek-ai/dsh-agent-default-model'
       config:
-        provider: deepseek-official
-        model: deepseek-v4-flash
+        provider: !!js process.env.DSH_DEFAULT_PROVIDER || 'deepseek-official'
+        model: !!js process.env.DSH_DEFAULT_MODEL || 'deepseek-v4-flash'
 
     - id: jobs
       name: '@deepseek-ai/dsh-jobs-local'
@@ -97,15 +100,42 @@
     - id: credentials
       name: '@deepseek-ai/dsh-credentials-local'
 
-    # The pi-ai multi-provider twin, mounted dormant: zero routes (and no extra
-    # models in the picker) until a `llm-pi-ai:` settings section supplies provider
-    # profiles — then those routes register live, keys resolving per request
-    # through their apiKeyEnv references, and drop again when the section empties.
-    # Supplying those profiles is exactly what the web Models page does. Which
-    # adapters exist is composition; which providers run is the user's settings
-    # document.
+    # The pi-ai multi-provider twin, mounted with routes auto-detected from
+    # well-known environment variables. A provider is registered only when its
+    # API key or endpoint is present in the launching environment, so adding a
+    # model is a matter of exporting the key in .env (or the managed credential
+    # store); removing the key drops the route. Hand-declared routes and further
+    # overrides still arrive through the `llm-pi-ai:` settings section.
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers: !!js |-
+          (function () {
+            const providers = {}
+            const env = process.env
+            if (env.OPENAI_API_KEY) {
+              providers.openai = { apiKeyEnv: 'OPENAI_API_KEY' }
+              if (env.OPENAI_BASE_URL) providers.openai.baseURL = env.OPENAI_BASE_URL
+            }
+            if (env.ANTHROPIC_API_KEY) {
+              providers.anthropic = { apiKeyEnv: 'ANTHROPIC_API_KEY' }
+              if (env.ANTHROPIC_BASE_URL) providers.anthropic.baseURL = env.ANTHROPIC_BASE_URL
+            }
+            if (env.WIZMACAU_API_KEY || env.WIZMACAU_BASE_URL) {
+              providers.wizmacau = {
+                api: 'openai-completions',
+                displayName: 'Wizmacau Ollama',
+                baseURL: env.WIZMACAU_BASE_URL || 'http://192.168.10.28:11434/v1',
+                models: [
+                  { id: 'qwen3-coder-next:q8_0', name: 'Qwen3 Coder Next (Q8_0)', contextWindow: 131072, maxTokens: 8192 },
+                  { id: 'qwen3.6:35b-a3b', name: 'Qwen3.6 35B A3B', contextWindow: 32768, maxTokens: 8192 },
+                  { id: 'qwen2.5-coder:1.5b-base', name: 'Qwen2.5 Coder 1.5B Base', contextWindow: 32768, maxTokens: 4096 },
+                ],
+              }
+              if (env.WIZMACAU_API_KEY) providers.wizmacau.apiKeyEnv = 'WIZMACAU_API_KEY'
+            }
+            return providers
+          })()
 
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
