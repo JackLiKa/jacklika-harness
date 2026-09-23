@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-authorization` obtains credentials that configuration cannot supply by asking a human: a plugin registers one flow per credential, and a configuration UI or another surface runs an attempt whose notices and questions reach exactly the page that asked. A human signs in with one of the flow's methods, pastes a code, or answers a question; when the flow resolves, its credential record is committed to the `dsh-credentials` store, and an attempt only reports `authorized` when that commit was observed. A refusal or a withdrawn attempt settles as `cancelled` rather than an error, so a surface can tell "the human said no" from "the flow broke". Choose it when a credential must be obtained interactively: it builds on the credential-record half of the credential seam, needs that store mounted, and ships no flows of its own — your plugin registers them.
+`dsh-authorization` lets a configuration UI or another caller obtain credentials through a human-guided sign-in, code entry, or question. Each attempt sends notices and prompts only to the surface that started it. It reports `authorized` only after the new credential has been stored; a refusal or withdrawal reports `cancelled`, while failures remain errors. Choose it for credentials that cannot be supplied through configuration. It requires the credential store and an integration that defines the available authorization methods; the package provides no provider-specific methods itself.
 
 ## Table of Contents
 
@@ -161,3 +161,5 @@ This Dev Note is working context for maintainers: open questions and undecided d
 The limitations above name the open directions — resumable attempts, server-side revocation, orphaned-record discovery — each needing its own design and store before landing. The invariant companion is the one load-bearing runtime check: settlement must always find the key released, because a wedged key is indistinguishable from a busy one and only a restart frees it.
 
 </details>
+
+A flow can use session.commit(record) to refuse writes after cancellation. Once commit is admitted, cancel() leaves it running until persistence and flow settlement complete. Flows that write through their own credential adapter remain responsible for their own cancellation ordering.

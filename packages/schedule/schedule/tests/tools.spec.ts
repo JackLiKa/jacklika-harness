@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
+import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent, AgentCancelCause, InboxTarget } from '@deepseek-ai/dsh-agent'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
@@ -10,6 +10,7 @@ import ToolRuntime from '@deepseek-ai/dsh-tools'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { registerScheduleTools } from '../src/tools.ts'
 import { runScheduleTransaction } from '../src/transaction.ts'
+import { unsupportedInbox } from '@deepseek-ai/dsh-agent-loop-testkit'
 
 const signal = new AbortController().signal
 const contexts: Context[] = []
@@ -24,12 +25,11 @@ interface ToolHarness {
 
 function stubAgent(ctx: Context, id: string): Agent {
   const session = ctx.sessions.create(SessionId(id))
-  const inbox = new Inbox(session, { inserted: () => {}, discarded: () => {}, claimed: () => {} })
-  return {
+  const agent: Agent = {
     id: session.id,
     options: {},
     session,
-    inbox,
+    inbox: unsupportedInbox(),
     status: 'idle',
     ctx: new Context(),
     send(_message: UserMessage, _target: InboxTarget, _wakeup: boolean) {},
@@ -40,6 +40,7 @@ function stubAgent(ctx: Context, id: string): Agent {
     steer(_message: UserMessage) {},
     inject(_message: UserMessage) {},
   }
+  return agent
 }
 
 async function harness(withPersistence = true): Promise<ToolHarness> {
@@ -50,7 +51,7 @@ async function harness(withPersistence = true): Promise<ToolHarness> {
   await ctx.plugin(SystemPrompt, {})
   await ctx.plugin(ToolRuntime)
   const agent = stubAgent(ctx, `schedule-tools-${Math.random()}`)
-  ctx.agents.register(agent)
+  await ctx.agents.register(agent)
   const flushes = { count: 0, outcomes: [] as Array<'resolve' | 'reject' | Promise<'resolve' | 'reject'>> }
   if (withPersistence) {
     ctx.on('session/flush', async () => {
@@ -549,7 +550,7 @@ describe('Schedule persistence failure boundaries', () => {
     stop()
 
     const other = stubAgent(test.ctx, `other-${Math.random()}`)
-    test.ctx.agents.register(other)
+    await test.ctx.agents.register(other)
     expect(value(await execute(test, 'schedule_create', { prompt: 'x', after_seconds: 1 }, other)))
       .toEqual({ code: 'internal_error', message: 'The schedule operation failed.' })
     expect(value(await execute(test, 'schedule_list', {}, other)))

@@ -12,7 +12,7 @@ Status: implemented
 
 ## 决策
 
-录制会话快照通过 `dsh` 启动随附 profile，驱动其公开接口，并将规范化输出与已提交的预期输出比较。归 ACP 所有的场景还会驱动 stdio 协议并比较其 transcript。从真实 API 一次记录的会话日志为后续所有模型流提供数据。fixture 是[产品持久化 JSONL 的投影](2026-08-18-session-snapshot-envelope-projection.zh.md)：保留 header 与 payload，省略正文序号／时间 envelope。
+录制会话快照通过 `dsh` 启动随附 profile，驱动其公开接口，并将规范化输出与已提交的预期输出比较。归 ACP 所有的场景还会驱动 stdio 协议并比较其 transcript。从真实 API 一次记录的会话日志为后续所有模型流提供数据。fixture 是[产品持久化 JSONL 的投影](../../archived/testing/2026-08-18-session-snapshot-envelope-projection.md)：保留 header 与 payload，省略正文序号／时间 envelope。
 
 [Session-log 快照语料决策](2026-08-24-session-log-snapshot-corpus.zh.md)取代本 Note 中 ACP 专属的放置位置与控制器所有权；本 Note 继续负责会话日志 fixture、回放推导、例外 override、规范化和 ACP transcript 比较的理由。
 
@@ -20,7 +20,7 @@ Status: implemented
 
 每个场景数值最高的选定 parent generation 都从真实运行中采集：v0 为 `session.jsonl`，正 generation 为 `session.vN.jsonl`。`assistant/message` 与 `assistant/attempt` 中嵌入的紧凑 stream 会复现模型 attempt；工具、message 与 boundary event 捕获 harness 行为。因此，一份普通 Session generation 同时充当 replay source 与行为预期输出。
 
-每个当前 v2 Session-format fixture 都为每个持久事件使用一条物理行。保留的 v0 与 v1 predecessor generation 可以包含其冻结 packed-row 表示，并保持不可变。普通 replay 与 log 比较证明组装进程会选择、迁移、消费并复现当前 generation。
+每个当前 Session-format fixture 都为每个持久事件使用一条物理行。保留的 v0 与 v1 predecessor generation 可以包含其冻结 packed-row 表示，并保持不可变。普通 replay 与 log 比较证明组装进程会选择、迁移、消费并复现当前 generation。
 
 ### 回放从日志推导模型脚本
 
@@ -57,7 +57,7 @@ Log 从持久 Assistant settlement 与显式标记的 compaction call 推导 chu
 
 两个表面互补：stdout 覆盖精简的自动化协议格式，JSONL 覆盖协议格式有意省略的循环、工具和边界结构。
 
-规范化会替换会话、cwd、协议 id、时间戳、路径和进程易变值；fixture 投影会省略正文序号／时间 envelope，而不修改 payload 引用。录制与刷新还会在回放 fixture 中将生成的 workspace 及其文件系统解析出的别名存储为 `{{cwd}}`，使平台临时根目录和随机 basename 不影响录制结果；手工编写的临时路径与显式 `workspaceParent` 下的 cwd 值仍保留字面值。场景把真实 bash 使用限制在稳定命令上。stdout 预期输出仍是符合协议格式的 JSONL，每个原始行都必须可解析为 JSON。普通 Vitest 快照更新只写入 stdout 预期输出；回放 fixture 的写入由显式 `record` 和 `refresh` 模式负责。
+规范化会替换会话、cwd、协议 id、时间戳、路径和进程易变值；fixture 投影会省略正文序号／时间 envelope，而不修改 payload 引用。共享快照写入器在保存前展开顶层 `sourceEventSeqs` 区间，使录制与刷新直接产出规范 fixture 字节，无需依赖回放时的规范化。录制与刷新还会在回放 fixture 中将生成的 workspace 及其文件系统解析出的别名存储为 `{{cwd}}`，使平台临时根目录和随机 basename 不影响录制结果；手工编写的临时路径与显式 `workspaceParent` 下的 cwd 值仍保留字面值。场景把真实 bash 使用限制在稳定命令上。stdout 预期输出仍是符合协议格式的 JSONL，每个原始行都必须可解析为 JSON。普通 Vitest 快照更新只写入 stdout 预期输出；回放 fixture 的写入由显式 `record` 和 `refresh` 模式负责。
 
 ### 隔离：当前靠归一化，后续可加沙箱
 

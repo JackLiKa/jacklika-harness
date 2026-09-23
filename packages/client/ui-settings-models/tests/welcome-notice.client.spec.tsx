@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bindSnapshotSelector, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import { Context } from '@deepseek-ai/cordis'
 import { SettingsSchemaService } from '@deepseek-ai/dsh-client-ui-settings/src/client/schema.ts'
 import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
-import { SettingsScopeController } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-scope.ts'
+import { ConfigFormController } from '@deepseek-ai/dsh-client-ui-settings/src/client/config-form.ts'
+
+// Every fixture carries the resource hook the resources plugin merges into GlobalStandardProps.
+const useResource = (() => ({ status: 'none' as const, value: undefined, failure: undefined, reload: () => {} })) as GlobalStandardProps['useResource']
+const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({ activePanelId: null })
 
 /** Stateless schema service for scope construction in this jsdom fixture. */
 const schemaService = new SettingsSchemaService(new Context())
@@ -41,15 +46,15 @@ function welcomeView(value: unknown, revision = 0) {
     value,
     base: {},
     user: {},
-    applies: 'live' as const,
+    autoGenerate: true, applies: 'live' as const,
     secrets: [],
     revision,
   }
 }
 
-type AttentionSnapshot = Parameters<Parameters<WelcomeNoticeProps['useSessionPendingInteraction']>[0]>[0]
+type AttentionSnapshot = Parameters<Parameters<WelcomeNoticeProps['useSessionStatus']>[0]>[0]
 const noAttention: AttentionSnapshot = new Map()
-const useSessionPendingInteraction: WelcomeNoticeProps['useSessionPendingInteraction'] = selector => selector(noAttention)
+const useSessionStatus: WelcomeNoticeProps['useSessionStatus'] = selector => selector(noAttention)
 
 function mount(
   version?: string,
@@ -72,7 +77,7 @@ function mount(
   }
   const ctx = { remote: api } as never
   const mirror = new SettingsDescribeMirror(ctx)
-  const scope = new SettingsScopeController<WelcomeSection>(
+  const scope = new ConfigFormController<WelcomeSection>(
     ctx,
     { namespace: WELCOME_NOTICE_SETTINGS_NAMESPACE, decode: decodeWelcomeSection },
     mirror,
@@ -88,7 +93,8 @@ function mount(
     complete,
     openSection: vi.fn(),
     useSessions: unusedHook,
-    useSessionPendingInteraction,
+    useSessionStatus,
+    usePanelInfo, useSessionRetainInfo: () => undefined, useResource,
     useWorkspaces: unusedHook,
     controller,
     useWelcome: bindSnapshotSelector(controller.store),

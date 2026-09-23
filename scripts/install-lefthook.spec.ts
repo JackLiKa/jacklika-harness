@@ -91,6 +91,8 @@ try {
 }
 const delay = Number(process.env.DSH_TEST_LEFTHOOK_DELAY_MS ?? 0)
 if (delay > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay)
+const replaceLockPath = process.env.DSH_TEST_LEFTHOOK_REPLACE_LOCK_PATH
+if (replaceLockPath !== undefined) writeFileSync(replaceLockPath, 'replacement owner\\n')
 const shouldFail = process.env.DSH_TEST_LEFTHOOK_FAIL === '1'
 if (!shouldFail) {
   const binary = join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'lefthook.cmd' : 'lefthook')
@@ -215,7 +217,7 @@ function runInstaller(
 // flag rather than yielding to it, so a smaller one here lowers what the lane
 // grants every case in this file, none of which carries an allowance of its own.
 // Rationale and the paired hook budget are in
-// .agents/notes/implemented/testing/2026-08-29-windows-lane-hook-and-lefthook-budget.md.
+// .agents/notes/archived/testing/2026-08-29-windows-lane-hook-and-lefthook-budget.md.
 describe('worktree-local Lefthook installer', { timeout: 90_000 }, () => {
   for (const [label, extraEnv] of [
     ['CI', { CI: 'true' }],
@@ -346,17 +348,32 @@ describe('worktree-local Lefthook installer', { timeout: 90_000 }, () => {
   it('waits for a concurrent installer to finish publishing its lock record', async () => {
     const fixture = createFixture()
     const lockPath = installLockPath(fixture)
+    const publicationBarrier = join(fixture.container, 'lock-publication')
+    const observationBarrier = join(fixture.container, 'lock-observation')
     const publishing = runInstaller(fixture, fixture.main, {
-      DSH_TEST_LEFTHOOK_LOCK_WRITE_DELAY_MS: '200',
+      DSH_TEST_LEFTHOOK_LOCK_PUBLISH_BARRIER: publicationBarrier,
     })
-    await waitForPath(lockPath)
-    expect(readFileSync(lockPath, 'utf8')).toBe('')
-
-    const waiting = runInstaller(fixture, fixture.linked)
-    const results = await Promise.all([publishing, waiting])
-
-    for (const result of results) expect(result.status, result.stderr).toBe(0)
-    expect(existsSync(lockPath)).toBe(false)
+    let waiting: Promise<CommandResult> | undefined
+    const release = (): void => {
+      writeFileSync(`${publicationBarrier}.release`, '')
+      writeFileSync(`${observationBarrier}.release`, '')
+    }
+    try {
+      await waitForPath(`${publicationBarrier}.ready`)
+      expect(readFileSync(lockPath, 'utf8')).toBe('')
+      waiting = runInstaller(fixture, fixture.linked, {
+        DSH_TEST_LEFTHOOK_LOCK_OBSERVE_BARRIER: observationBarrier,
+      })
+      await waitForPath(`${observationBarrier}.ready`)
+      expect(readFileSync(lockPath, 'utf8')).toBe('')
+      release()
+      const results = await Promise.all([publishing, waiting])
+      for (const result of results) expect(result.status, result.stderr).toBe(0)
+      expect(existsSync(lockPath)).toBe(false)
+    } finally {
+      release()
+      await Promise.allSettled([publishing, ...waiting === undefined ? [] : [waiting]])
+    }
   })
 
   it('repairs its owned absolute hook path after the checkout moves', async () => {
@@ -532,21 +549,14 @@ describe('worktree-local Lefthook installer', { timeout: 90_000 }, () => {
   it('does not release an installer lock whose ownership changed', async () => {
     const fixture = createFixture()
     const lockPath = installLockPath(fixture)
-    const runningPath = join(hooksPath(fixture, fixture.main), '.fake-lefthook-running')
-    const install = runInstaller(fixture, fixture.main, { DSH_TEST_LEFTHOOK_DELAY_MS: '250' })
-    try {
-      await waitForPath(runningPath)
-    } catch (error) {
-      await install
-      throw error
-    }
-    const replacementRecord = 'replacement owner\n'
-    writeFileSync(lockPath, replacementRecord)
+    // The fake child replaces the record while the installer holds the lock.
+    const result = await runInstaller(fixture, fixture.main, {
+      DSH_TEST_LEFTHOOK_REPLACE_LOCK_PATH: lockPath,
+    })
 
-    const result = await install
     expect(result.status).toBe(1)
     expect(result.stderr).toContain('installer lock ownership changed')
-    expect(readFileSync(lockPath, 'utf8')).toBe(replacementRecord)
+    expect(readFileSync(lockPath, 'utf8')).toBe('replacement owner\n')
   })
 
   it.skipIf(process.platform === 'win32')('preserves trailing spaces in worktree paths', async () => {

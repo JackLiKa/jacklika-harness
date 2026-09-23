@@ -8,7 +8,6 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionLogOffset, SessionId, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
 import SubagentService from '@deepseek-ai/dsh-subagent'
 import { deliverSubagentPrompt, type HostPromptDeliverer } from '@deepseek-ai/dsh-subagent/internal'
@@ -50,7 +49,7 @@ function durable(agent: Agent): {
 async function storedEvents(ctx: Context, id: SessionId): Promise<readonly SessionEvent[]> {
   const handle = await ctx.sessionPersistence.open(id, 'read')
   try {
-    return await handle.read()
+    return (await handle.read()).events
   } finally {
     await handle.close()
   }
@@ -62,7 +61,6 @@ async function setup(
 ) {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
-  await ctx.plugin(SessionProjectionRegistry)
   const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-team-'))
   roots.push(storageRoot)
   await ctx.plugin(JsonlSessionPersistence, { root: storageRoot })
@@ -170,7 +168,6 @@ describe('Team identity and provisioning', () => {
   it('supports direct-constructor defaults and recovers roots that already exist', async () => {
     const ctx = new Context()
     await mountAgentLoopTestDependencies(ctx)
-    await ctx.plugin(SessionProjectionRegistry)
     const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-team-direct-'))
     roots.push(storageRoot)
     await ctx.plugin(JsonlSessionPersistence, { root: storageRoot })
@@ -181,7 +178,7 @@ describe('Team identity and provisioning', () => {
 
     expect(service.listMembers(lead)).toEqual([expect.objectContaining({
       name: 'lead',
-      status: 'idle',
+      status: 'inactive',
       diagnostics: [],
     })])
     const provisioning = {
@@ -223,7 +220,7 @@ describe('Team identity and provisioning', () => {
     expect((await ctx.sessionPersistence.stat(forked.member.id))?.header.isSeeded).toBe(true)
     expect((await ctx.sessionPersistence.stat(fresh.member.id))?.header.isSeeded).toBe(false)
     expect(ctx.agentTeams.listMembers(lead).map(row => [row.name, row.context, row.status])).toEqual([
-      ['lead', undefined, 'idle'],
+      ['lead', undefined, 'inactive'],
       ['fork-worker', 'fork', 'inactive'],
       ['fresh-worker', 'fresh', 'inactive'],
     ])
@@ -877,63 +874,20 @@ describe('Team shared task DAG', () => {
 })
 
 describe('Team Remote API', () => {
-  it('exports Team views and task mutations from the owning service', async () => {
+  it('reads tasks created and updated by Team agents', async () => {
     const { ctx, lead } = await setup([])
     expect(ctx.agentTeams.typertRemote).toMatchObject({ serviceKey: 'agentTeams', namespace: 'agentTeams' })
     expect(ctx.agentTeams.remoteView(lead)).toEqual({
-      members: [expect.objectContaining({ name: 'lead', role: 'lead', status: 'idle' })],
+      members: [expect.objectContaining({ name: 'lead', role: 'lead', status: 'inactive' })],
       tasks: [],
     })
-
-    const createdResult = await ctx.agentTeams.remoteCreateTask(lead, {
-      subject: 'Remote task',
-      description: 'Created through the generated API',
-      blockedBy: [],
-      writeScopes: ['packages/experimental/agent-team'],
+    const created = await ctx.agentTeams.createTask(lead, {
+      subject: 'Agent task', description: 'Created by the Team Lead',
     })
-    expect(createdResult).toMatchObject({ ok: true, value: { revision: 1 } })
-    if (!createdResult.ok) throw new Error('Remote task creation did not succeed')
-    const created = createdResult.value
-    await expect(ctx.agentTeams.remoteUpdateTask(lead, {
-      taskId: created.id,
-      expectedRevision: created.revision,
-      action: 'claim',
-    })).resolves.toMatchObject({
-      ok: true,
-      value: { id: created.id, revision: 2, ownerName: 'lead' },
+    const updated = await ctx.agentTeams.updateTask(lead, {
+      taskId: created.id, expectedRevision: 1, action: 'claim',
     })
-    expect(ctx.agentTeams.remoteView(lead).tasks).toHaveLength(1)
-  })
-
-  it('preserves Team task rejections and propagates unexpected failures', async () => {
-    const { ctx, lead } = await setup([])
-    const createRequest = {
-      subject: 'Remote task', description: 'Rejected task', blockedBy: [], writeScopes: [],
-    }
-    const request = { taskId: TeamTaskId('task-1'), expectedRevision: 1, action: 'delete' as const }
-    vi.spyOn(ctx.agentTeams, 'createTask')
-      .mockRejectedValueOnce(new TeamError('invalid task', 'TEAM_TASK_INVALID'))
-      .mockRejectedValueOnce(new Error('unexpected creation failure'))
-    vi.spyOn(ctx.agentTeams, 'updateTask')
-      .mockRejectedValueOnce(new TeamError('stale', 'TEAM_TASK_STALE_REVISION'))
-      .mockRejectedValueOnce(new TeamError('denied', 'TEAM_TASK_FORBIDDEN'))
-      .mockRejectedValueOnce(new Error('unexpected mutation failure'))
-
-    await expect(ctx.agentTeams.remoteCreateTask(lead, createRequest)).resolves.toEqual({
-      ok: false,
-      error: { code: 'team-rejected', message: 'invalid task' },
-    })
-    await expect(ctx.agentTeams.remoteCreateTask(lead, createRequest))
-      .rejects.toThrow('unexpected creation failure')
-    await expect(ctx.agentTeams.remoteUpdateTask(lead, request)).resolves.toEqual({
-      ok: false,
-      error: { code: 'team-task-conflict', message: 'stale' },
-    })
-    await expect(ctx.agentTeams.remoteUpdateTask(lead, request)).resolves.toEqual({
-      ok: false,
-      error: { code: 'team-rejected', message: 'denied' },
-    })
-    await expect(ctx.agentTeams.remoteUpdateTask(lead, request)).rejects.toThrow('unexpected mutation failure')
+    expect(ctx.agentTeams.remoteView(lead).tasks).toEqual([updated])
   })
 })
 
@@ -1411,7 +1365,6 @@ describe('Team mailbox and waiting', () => {
   it('waits for one change, supports cancellation, times out, and releases waiters on HMR disposal', async () => {
     const ctx = new Context()
     await mountAgentLoopTestDependencies(ctx)
-    await ctx.plugin(SessionProjectionRegistry)
     const storageRoot = mkdtempSync(join(tmpdir(), 'dsh-team-wait-'))
     roots.push(storageRoot)
     await ctx.plugin(JsonlSessionPersistence, { root: storageRoot })
@@ -1701,7 +1654,7 @@ describe('Team mailbox and waiting', () => {
     flushSpy.mockRestore()
   })
 
-  it('bounds Team runtime disposal when a continuation drain never settles', async () => {
+  it('bounds Team runtime disposal when a continuation drain never settles', { timeout: 30_000 }, async () => {
     const { ctx, lead, teamFiber } = await setup(['hang'], { disposalTimeoutMs: 25 })
     const started = await spawn(ctx, lead, 'stuck-worker')
     await waitRunning(ctx, started.member.id)

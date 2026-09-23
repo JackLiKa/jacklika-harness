@@ -17,7 +17,7 @@ import {
 import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/goal-multi-turn-actions', import.meta.url))
-const FIXTURE = join(SNAPSHOT_DIR, 'session.v2.jsonl')
+const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
 const OVERRIDE = join(SNAPSHOT_DIR, 'replay.override.json')
 const UI_EXPECTED = join(SNAPSHOT_DIR, 'ui.expected.md')
 const UI_EXPANDED_EXPECTED = join(SNAPSHOT_DIR, 'ui-expanded.expected.md')
@@ -155,9 +155,9 @@ describe('web e2e: Goal keeps one assistant action row per completed turn', () =
     expect(sessionEvents.flatMap(event =>
       event.type === 'request/header' ? [event.data.reason] : [])).toEqual(['initial', 'series'])
     await expect.poll(() => page.locator('[data-turn-process]').count(), { timeout: 15_000 }).toBe(2)
-    expect(await page.getByRole('button', { name: 'System prompt' }).count()).toBe(2)
+    expect(await page.getByRole('button', { name: 'System prompt' }).count()).toBe(0)
     expect(await page.locator(
-      '[data-chat-flow-kind="system-prompt"][hidden="until-found"]',
+      '[data-chat-flow-kind="system-prompt"]',
     ).count()).toBe(0)
     const branchButtons = page.getByRole('button', { name: 'Branch into a new conversation' })
     await expect.poll(() => branchButtons.count(), { timeout: 15_000 }).toBe(2)
@@ -178,7 +178,7 @@ describe('web e2e: Goal keeps one assistant action row per completed turn', () =
 
   it.skipIf(MODE === 'record')('keeps a closed fixture inventory', async () => {
     await assertFixtureInventory(SNAPSHOT_DIR, [
-      'replay.override.json', 'session.v2.jsonl', 'ui.expected.md', 'ui-expanded.expected.md',
+      'replay.override.json', 'session.v3.jsonl', 'ui.expected.md', 'ui-expanded.expected.md',
     ])
   })
 })

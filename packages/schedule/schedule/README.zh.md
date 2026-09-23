@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-schedule` 为你的会话提供持久的提醒：让模型稍后提醒你，提醒会作为同一会话中的普通 follow-up 消息返回。你可以安排延时后的一次性提醒、绝对时间的一次性提醒，或固定间隔的重复提醒，也可以列出仍待处理的提醒或取消提醒。提醒在重启后依然存在：已经 live 且空闲的 agent 可以立即交付到期工作，而已关闭或 cold 的会话会让提醒保持逾期，直到未来的 live 根 agent 恢复会话。交付只发生在会话内部，没有电子邮件、短信或推送通知。它是可选的 Web 能力；加载 Schedule overlay 即可启用提醒工具与只读活动提醒目录。普通与搜索侧边栏行还会在尽力而为的列表 projection 明确非空时显示不可交互的闹钟；该闹钟不保证 live runtime 存在。
+Schedule 让你向模型请求持久提醒；提醒会作为普通 follow-up 消息返回同一会话。你可以创建延时或绝对时间的一次性提醒、按固定间隔重复提醒、列出待处理提醒，也可以取消提醒。提醒在重启后仍然存在，但交付需要 live 根 agent（智能体）：已关闭的会话会让提醒保持逾期，直到恢复。交付绝不会使用电子邮件、短信、推送或浏览器通知。启用 Schedule overlay 即可提供提醒工具和活动提醒目录；侧边栏闹钟只是已知活动提醒的尽力而为指示，不证明提醒交付当前正在运行。
 
 ## 目录
 
@@ -53,7 +53,7 @@ dsh web --patch apps/cli/config/examples/schedule/cordis.yml
 
 ### 提醒何时触发
 
-到期提醒会在会话空闲后作为普通 follow-up 消息出现；agent 绝不会中断正在运行的轮次。已经 live 且空闲的 agent 可以认领 maintenance 并立即交付，无需再次恢复。一次性提醒先于任何重复批次触发；同时到期的多条重复提醒会按时间顺序合并为一条消息。如果会话在提醒到期时已关闭或 cold，提醒会保持逾期，直到未来的 live 根 agent 恢复会话——会话之外不会发送任何内容。错过若干间隔的重复提醒只展示最新一个到期发生时点，不展示积压。可选 Web 目录只显示活动记录，并不充当交付回执；dispatch 表示 follow-up 已入队并被记录，不表示模型成功或用户已读取回答。
+到期提醒会在会话空闲后作为普通 follow-up 消息出现；agent 绝不会中断正在运行的轮次。已经 live 且空闲的 agent 可以认领 maintenance 并立即交付，无需再次恢复。一次性提醒先于任何重复批次触发；同时到期的多条重复提醒会按时间顺序合并为一条消息。如果会话在提醒到期时已关闭或 cold，提醒会保持逾期，直到未来的 live 根 agent 恢复会话——会话之外不会发送任何内容。错过若干间隔的重复提醒只展示最新一个到期发生时点，不展示积压。可选 Web 目录只显示活动记录，并不充当交付回执；dispatch 表示 follow-up 已入队并被记录，不表示模型成功或用户已读取回答。归档仍有活动提醒的活会话会被拒绝，直到这些提醒停止；选择停止它们会删除全部活动提醒，取消归档不会把它们带回来。
 
 -----
 
@@ -71,14 +71,14 @@ dsh web --patch apps/cli/config/examples/schedule/cordis.yml
 
 Time-context 不是 Schedule 的依赖。官方 Web overlay 挂载 `@deepseek-ai/dsh-time-context`，让模型能够按浏览器请求本地时区解释自然语言；但模型仍必须向 `schedule_create` 传入显式偏移量或 `time_zone`；Schedule 绝不会从模型上下文导入或推断该值。
 
-Session projection 是可选能力。`ctx.sessionProjections` 存在时，插件会注册严格的 `schedule` 单元并公开完整的活动 `ScheduleRecord[]`；不带注册表的 headless 组合仍保留相同工具与 runtime。浏览器安全的记录词汇由纯类型出口 `@deepseek-ai/dsh-schedule/client` 提供。随附 Web bundle 通过 disabled row 解析 `ui-schedule`，显式 Schedule overlay 再与 Host Schedule 服务一起启用该 row。
+Session projection 是可选能力。`ctx.sessionProjections` 存在时，插件会注册严格的 `schedule` 单元并公开完整的活动 `ScheduleRecord[]`；不带注册表的 headless 组合仍保留相同工具与 runtime。浏览器安全的记录词汇可从纯类型导出 `@deepseek-ai/dsh-schedule/client` 获取。随附 Web bundle 通过 disabled row 解析 `ui-schedule`，显式 Schedule overlay 再与 Host Schedule 服务一起启用该 row。
 
 ### 设计理念
 
 本包建立在一个分离与三项承诺之上：
 
 - **会话日志拥有状态。** 版本 1 的 `schedule/change` 事件是唯一持久权威；timer、工具值与 follow-up 都是从折叠结果重建的可丢弃投影。
-- **严格回放。** 解码器拒绝未知版本、额外字段、重复使用的 id、形状不匹配的 dispatch 以及针对非活动记录的转换，因此损坏的流会大声失败，而不是派生出错误视图。
+- **严格回放。** 解码器拒绝未知版本、额外字段、重复使用的 id、形状不匹配的 dispatch 以及针对非活动记录的转换，因此损坏的流会明确报错，而不是派生出错误视图。
 - **先持久化再决策。** 每项读取或决策都等待共享的会话 flush barrier，create 与 delete 只在第二个 post-append barrier 之后才确认。
 - **仅限会话本地交付。** 没有外部渠道、没有 cold 会话调度器、也没有回执：到期工作进入同一会话，否则保持活动。
 
@@ -92,9 +92,9 @@ Session projection 是可选能力。`ctx.sessionProjections` 存在时，插件
 | [`src/runtime.ts`](src/runtime.ts) | live timer owner：maintenance 认领、follow-up、dispatch barrier |
 | [`src/persistence.ts`](src/persistence.ts) | Schedule 对共享会话持久化 barrier 的使用 |
 | [`src/projection.ts`](src/projection.ts) | 可选的 seed-aware Session projection 与严格检查点 schema |
-| [`src/client.ts`](src/client.ts) | 浏览器安全的纯类型 `ScheduleRecord` 出口 |
+| [`src/client.ts`](src/client.ts) | 浏览器安全的纯类型 `ScheduleRecord` 导出 |
 | [`src/transaction.ts`](src/transaction.ts) | 读取与持久变更的 agent 范围串行化 |
-| [`src/invariant.ts`](src/invariant.ts) | `./invariant` 配套模块，对现有日志与候选事件应用回放策略 |
+| [`src/invariant.ts`](src/invariant.ts) | 位于 `./invariant` 的 `schedule-invariant` 配套模块，对现有日志与候选事件应用回放策略 |
 
 ### 持久状态与回放
 
@@ -104,12 +104,13 @@ Session projection 是可选能力。`ctx.sessionProjections` 存在时，插件
 
 可选的 `schedule` projection 将 `{ inheritedEventCount, active, seenIds }` 作为严格的纯 JSON 检查点，并且只发布完整的 `active` 数组。其 schema 复用持久 Schedule decoder，拒绝重复或不一致的 id，并让损坏的持久事件通过既有 Session 读取失败传播，而不是发布部分目录。live 惰性构建、事件驱动构建、cold restore、history 读取与 detached Subagent 读取都使用精确 Session 切点与同一套自有后缀 transition。
 
-projection 只携带持久记录。它不持久化或传输 scheduled／overdue 状态、本地化文本、相对时间、浏览器本地时间、排序状态、popover 状态、runtime 存活或交付回执。[`dsh-client-ui-schedule`](../../client/ui-schedule/README.zh.md) 从完整数组与查看方浏览器时钟派生目录呈现。[`dsh-client-ui-workspace`](../../client/ui-workspace/README.zh.md) 只派生列表值是否为非空数组，因此持久 projection cache 缺失或陈旧时，普通行与搜索结果的闹钟可能短暂漏显或残留。
+projection 只携带持久记录。它不持久化或传输 scheduled／overdue 状态、本地化文本、相对时间、浏览器本地时间、排序状态、popover 状态、runtime 存活或交付回执。[`dsh-client-ui-schedule`](../../client/ui-schedule/README.zh.md) 从完整数组与查看方浏览器时钟派生目录呈现。[`dsh-client-ui-workspace`](../../client/ui-workspace/README.zh.md) 只派生列表值是否为非空数组，因此持久 projection cache 缺失或陈旧时，普通行与搜索行中的闹钟可能短暂漏显或残留。
 
 ### 时间校验
 
 日历规范化是确定性的。夏令时缺口内的本地时间会被拒绝；重叠时选择第一次出现的较早时刻。Schedule 的时间校验不会读取浏览器、Session header 中的时区字段、模型 time-context、连接或进程时区，因此回放永不依赖环境时区状态。
 
+<a id="management-pipeline"></a>
 ### 管理流水线
 
 一条 agent 范围的队列把每项已接纳的管理事务与 live owner 的到期事务从 preflight 到任何 post-append barrier 全程串行化。`schedule_create` 建立检查点、分配永不复用的 id、追加 create 事件，再次建立检查点；被取消的调用方在追加前停止。每次成功的管理 preflight 还会要求 live owner 重新计算，这会在先前的 post-append barrier 返回 `persistence_uncertain` 后恢复所保留的 create 或 delete 批次。
@@ -121,6 +122,8 @@ projection 只携带持久记录。它不持久化或传输 scheduled／overdue 
 owner 把长等待拆分为有界的 timer 段，并在每次唤醒后重新读取墙钟。到期工作认领 idle maintenance phase、采样一个决策时点、在 `followup()` 之前构造完整的转义 framing、只在同步入队返回后追加 dispatch、释放 maintenance，然后等待持久化。错过的固定速率间隔永远不会被枚举：整数运算选择每条记录最新一个已到期且与创建锚点对齐的发生时点，并直接推进到第一个未来目标。
 
 逾期提醒首先为持久化建立检查点，然后通过 `runMaintenance()` 认领 agent 的 idle maintenance phase；如果某个轮次或另一项 maintenance task 已占用 agent，认领会失败，记录保持活动，owner 在 `whenIdle()` 后重试。获准的 maintenance task 会重新折叠、采样一个决策时点、构造固定 framing、同步将 `followup()` 入队，并在释放 phase 前追加 dispatch。dispatch 表示 follow-up 已入队并被记录，不表示模型成功或用户已读取回答。framing 构造或同步 follow-up 失败不会写入 dispatch；追加失败会使 owner 进入故障状态，因为消息可能已经入队；barrier 拒绝则把 dispatch 留给后续普通 preflight。agent 或插件执行资源释放时取消 timer 并停止新工作，但不删除持久记录。
+
+本插件为每个它拥有 runtime 的会话回答 Workspace 注册表的归档准入（[接缝](../../workspace/workspace/README.zh.md)），答案来自该 owner 对活日志的自有 fold——投影注册表是 Client 视图，这里不读它：`workspace/session-activity` 把会话自身后缀中的活动记录作为 `schedule` 族报告，每条提醒一项、以其 prompt 作名称；`workspace/session-stop` 是与工具处于[同一串行事务与屏障](#management-pipeline)之下的管理删除：先 await `ctx.sessions.flush(session)` 再读取 fold，为每条活动提醒追加与 `schedule_delete` 工具所记录的相同的 `delete` 变更，请求 owner 重新驱动以清除其 timer，然后在追加之后 await 第二道屏障。屏障失败会让该 stop 拒绝；注册表记录日志并保留归档，这些提醒留给已归档会话的 `agent/pre-step` 门禁在触发时拦下。注册表先写入归档再派发 stop，因此在该写入与删除屏障之间崩溃会留下一个提醒仍被记录的已归档会话；下次取消归档时它们会再次出现，与从未请求过 stop 时完全一样。没有活 agent 的会话，或没有归属 runtime 的活 agent（在本插件加载前发布，或其 runtime 已停止、已故障），不报告任何内容也没有可停的东西，因为它没有任何已武装、可触发的提醒。
 
 </details>
 
@@ -134,9 +137,9 @@ owner 把长等待拆分为有界的 timer 段，并在每次唤醒后重新读�
 - [仅限会话内的 Schedule 子系统](../../../docs/subsystems/schedule.zh.md)——带精确类型定义的持久记录、转换、视图与交付约定。
 - [生成的工具目录](../../../docs/tool-catalog.zh.md#deepseek-aidsh-schedule)——模型接收的 `schedule_create`、`schedule_list` 与 `schedule_delete` 完整 schema。
 - [持久 Web Schedule 决策](../../../.agents/notes/implemented/feature/2026-08-05-durable-web-schedule.zh.md)——本包背后的持久化与生命周期决策。
-- [对话式交付决策](../../../.agents/notes/implemented/simplification/2026-08-09-conversational-schedule-delivery.zh.md)——无回执边界与 follow-up 交付。
+- [对话式交付决策](../../../.agents/notes/archived/simplification/2026-08-09-conversational-schedule-delivery.md)——无回执边界与 follow-up 交付。
 - [显式时区边界](../../../.agents/notes/implemented/simplification/2026-08-09-explicit-schedule-time-zone.zh.md)——为什么模型必须始终传入显式时区。
-- [有界固定速率 Schedule](../../../.agents/notes/implemented/simplification/2026-08-09-bounded-fixed-rate-schedule.zh.md)——重复调度范围：只追赶最新一次与批次交付。
+- [有界固定速率 Schedule](../../../.agents/notes/archived/simplification/2026-08-09-bounded-fixed-rate-schedule.md)——重复调度范围：只追赶最新一次与批次交付。
 - [Schedule 用户指南](../../../docs/user/guide/schedule.zh.md)——挂载本包与 time-context 的官方配置路径。
 
 -----
@@ -209,7 +212,7 @@ reminders_json: <JSON.stringify(reminders)>
 <a id="known-limitations-and-deferred-work"></a>
 
 
-这些限制说明 Schedule 何时不适合你的使用场景，或何时需要特别的运维注意。它们是当前包约束，不是通用提醒服务对比或任务积压。
+这些限制说明 Schedule 何时不适合你的使用场景，或何时需要在运维中特别注意。它们是当前包约束，不是通用提醒服务对比或任务积压。
 
 - **仅限会话本地交付**——提醒只有在原会话 live 时才能准时运行；cold 会话不会收到外部通知，只有恢复后才会处理逾期记录。
 - **活动驱动的重试**——到期 preflight 被拒绝或 framing／入队失败被收容后，记录仍保持活动，但不会启动私有重试 timer；后续 agent 活动或成功的 Schedule preflight 会触发重新计算。
@@ -218,7 +221,7 @@ reminders_json: <JSON.stringify(reminders)>
 - **只追赶最新一次**——逾期 Every 记录只贡献其最新一个到期发生时点，因此 Schedule 绝不会回放因错过间隔而形成的积压。
 - **存在狭窄的崩溃重复窗口**——同步 follow-up 获得准入后、dispatch 检查点完成前发生崩溃，可能使提醒重复；本包不承诺模型完成、用户确认或副作用恰好执行一次。
 - **加载顺序边界**——插件不会扫描或接管加载时已经 live 的 agent。
-- **目录只是只读当前状态**——可选 Web 界面没有历史、mutation、Retry 或 acknowledgement 语义；终结记录会消失，交付仍然是普通对话输出。
+- **目录只是只读当前状态**——可选 Web 界面没有历史记录，也不具备变更、重试或确认语义；终结记录会消失，交付仍然是普通对话输出。
 
 <a id="dev-note"></a>
 ### 开发备注

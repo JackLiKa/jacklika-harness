@@ -221,6 +221,7 @@ function inputError(error: ScheduleInputError): ScheduleToolError {
 /** Fold only after a successful preflight, mapping corruption to a stable value. */
 function foldForTool(agent: Agent): ReturnType<typeof foldScheduleEvents> | ScheduleToolError {
   try {
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     return foldScheduleEvents(agent.session.ownEvents())
   } catch (error: unknown) {
     return error instanceof ScheduleLogError ? corruptLogError() : internalError()
@@ -256,7 +257,7 @@ function validateCreateArgs(args: {
   at?: AtInput
   every_seconds?: number
 }): ScheduleToolError | undefined {
-  const keys = Object.keys(args as unknown as Record<string, unknown>)
+  const keys = Object.keys(args)
   if (keys.some(key => key !== 'prompt'
     && key !== 'after_seconds'
     && key !== 'at'

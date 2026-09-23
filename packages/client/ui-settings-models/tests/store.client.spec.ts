@@ -4,7 +4,17 @@ import type { RpcResponse } from '@deepseek-ai/dsh-api-remotes/client'
 import { RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
 import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
 import { settingsSchema } from './settings-schema.client.ts'
-import { ModelsSettingsStore } from '../src/client/store.ts'
+import { joinProviderDirectory, ModelsSettingsStore } from '../src/client/store.ts'
+
+it.each([false, true])('retains configuration diagnostics when the route is active: %s', (active) => {
+  expect(joinProviderDirectory(active ? [{ id: 'openai', name: 'openai' }] : [], [{
+    provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'],
+    error: 'catalog unavailable',
+  }])).toEqual([{
+    provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'],
+    active, error: 'catalog unavailable',
+  }])
+})
 
 let nextRpc = 0
 function ok<T>(value: T): RpcResponse<T> {
@@ -38,7 +48,7 @@ const NAMESPACES = [
     schema: {},
     value: { apiKeyEnv: 'DEEPSEEK_API_KEY', baseURL: 'https://base' },
     base: { baseURL: 'https://base' },
-    applies: 'live' as const,
+    autoGenerate: true, applies: 'live' as const,
     secrets: [],
     revision: 0,
   },
@@ -47,7 +57,7 @@ const NAMESPACES = [
     schema: {},
     value: { providers: { openai: { apiKeyEnv: 'OPENAI_API_KEY' } } },
     user: { providers: { openai: { apiKeyEnv: 'OPENAI_API_KEY' } } },
-    applies: 'live' as const,
+    autoGenerate: true, applies: 'live' as const,
     secrets: [],
     revision: 0,
   },
@@ -210,7 +220,7 @@ describe('edge joins', () => {
           ns: 'llm-pi-ai',
           schema: {},
           value: { providers: { weird: 'oops' } },
-          applies: 'live' as const,
+          autoGenerate: true, applies: 'live' as const,
           secrets: [],
           revision: 0,
         }] as never,
@@ -233,7 +243,7 @@ describe('edge joins', () => {
       describeSettings: () => Promise.resolve(remoteOk({
         writable: true,
         hasDocument: false,
-        namespaces: [{ ns: 'llm-pi-ai', schema: {}, value: { providers: {} }, applies: 'live' as const, secrets: [], revision: 0 }] as never,
+        namespaces: [{ ns: 'llm-pi-ai', schema: {}, value: { providers: {} }, autoGenerate: true, applies: 'live' as const, secrets: [], revision: 0 }] as never,
       })),
       providers: () => Promise.resolve(ok({
         providers: [

@@ -95,7 +95,7 @@ async function harness(logged?: {
 }> {
   const ctx = new Context()
   await ctx.plugin(SessionStore)
-  await ctx.plugin(SystemPrompt, { persona: '' })
+  await ctx.plugin(SystemPrompt, { personaPrefix: '' })
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(AgentRegistry)
   ctx.llm.registerAdapter(['deepseek-official'], new CatalogAdapter('DeepSeek', [
@@ -132,7 +132,7 @@ async function harness(logged?: {
     ctx,
     inbox: { nextTurn: [], nextStep: [] },
   } as unknown as Agent
-  ctx.agents.register(agent)
+  await ctx.agents.register(agent)
   return { ctx, agent, sessionId: session.id }
 }
 
@@ -298,10 +298,10 @@ describe('Web session model selection', () => {
     }))).selected).toEqual({ provider: 'text-only', model: 'plain' })
 
     agent.session.append('user/message', {
-      id: 'summary', role: 'user', source: { kind: 'plugin', plugin: 'compact' },
+      id: 'summary', role: 'user', source: { kind: 'compact-checkpoint', compactionId: 'model-selection-compaction' },
       content: [{ type: 'text', text: 'image summarized' }],
     } as never, {
-      surfaceOp: { op: 'replace', start: imageEvent.seq, end: imageEvent.seq },
+      surfaceOp: { op: 'replace', startSeq: imageEvent.seq, endSeq: imageEvent.seq },
       sourceEventSeqs: [imageEvent.seq],
     })
     ;(agent.inbox.nextTurn as UserMessage[]).push({

@@ -12,7 +12,7 @@ import type {
   ToolCallBlock,
   ToolResultNode,
 } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { FileAttachmentRef, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type {
   TrajectoryCellProps,
   TrajectorySourceBlock,
@@ -37,6 +37,7 @@ export interface TrajectoryTurnModel {
 
 /** Snapshot slice the trajectory view folds. */
 export interface TrajectoryLayoutInput {
+  systemPrompts?: TrajectorySnapshot['systemPrompts']
   nodes: TrajectorySnapshot['eventNodes']
   eventLocations?: ReadonlyMap<number, ConversationLocation>
   partial: TrajectorySnapshot['partial']
@@ -94,7 +95,8 @@ type OrderedLayoutEntry =
   | {
     kind: 'system'
     seq: number
-    request: AssistantRequestView
+    request?: AssistantRequestView
+    systemPrompt?: string
     change: RequestPromptChange
   }
   | {
@@ -120,15 +122,13 @@ function inputCellDetail(node: InputNode, t: TrajectoryTranslate): Pick<
   | 'timeSeconds'
   | 'startedAt'
 > {
-  // An empty text block yields an empty preview; treat it as absent so an
-  // image-bearing record still labels its row instead of rendering blank.
   const preview = previewContent(node.content)
   const previewMarkdown = preview === '' ? undefined : preview
   const images = imageBlockCount(node.content)
   const files = fileBlockCount(node.content)
   const attachmentSummary = [
-    previewMarkdown === undefined && images > 0
-      ? t('layout.imageOnly', { count: images })
+    images > 0
+      ? t('layout.imageCount', { count: images })
       : undefined,
     files > 0 ? t('layout.fileAttachments', { count: files }) : undefined,
   ].filter((value): value is string => value !== undefined).join(' · ')
@@ -234,6 +234,10 @@ export function deriveTrajectoryLayout(
   }
 
   const entries: OrderedLayoutEntry[] = [
+    ...(input.systemPrompts ?? []).map(prompt => ({
+      kind: 'system' as const, seq: prompt.seq, systemPrompt: prompt.text,
+      change: { seq: prompt.seq, time: prompt.time, kind: prompt.update ? 'system' as const : 'initial' as const },
+    })),
     ...nodes.map((node, nodeIndex) => ({
       kind: 'node' as const,
       seq: node.seq,
@@ -306,7 +310,8 @@ export function deriveTrajectoryLayout(
           kind: 'system',
           text: promptChangeLabel(change, t),
           sourceSeq: change.seq,
-          ...(request.prompt === undefined ? {} : { promptDetail: request.prompt }),
+          ...(request?.prompt === undefined ? {} : { promptDetail: request.prompt }),
+          ...(entry.systemPrompt === undefined ? {} : { systemPromptDetail: entry.systemPrompt }),
           ...(change.previous === undefined
             ? {}
             : { previousPromptDetail: change.previous }),
@@ -801,7 +806,7 @@ function summarizeAssistantActivity(
     return t('layout.toolCallOnly')
   }
   const images = blocks.filter(block => block.kind === 'image').length
-  if (images > 0) return t('layout.imageOnly', { count: images })
+  if (images > 0) return t('layout.imageCount', { count: images })
   return ''
 }
 
@@ -822,7 +827,7 @@ function assistantSourceBlock(block: AssistantBlock): TrajectorySourceBlock {
       callId: block.callId,
       toolName: block.name,
     }
-    case 'image': return { type: 'image', content: '', attachment: block.attachment }
+    case 'image': return sourceBlock({ type: 'image', attachment: block.attachment })
     case 'other': return sourceBlock(block.block)
   }
 }
@@ -837,14 +842,20 @@ function sourceBlock(value: unknown): TrajectorySourceBlock {
     return { type: type === 'reasoning' ? 'thinking' : type, content: block.text }
   }
   if (
-    type === 'image'
+    (type === 'image' || type === 'file')
     && typeof block.attachment === 'object' && block.attachment !== null
     && typeof (block.attachment as Record<string, unknown>).attachmentId === 'string'
   ) {
     // Session-log content is validated into core ContentBlocks by the
     // Conversation node assembly; the `attachmentId` guard only keeps
     // wire-shaped 'other' blocks with an unrelated `attachment` member out.
-    return { type, content: '', attachment: block.attachment as ImageAttachmentRef }
+    return {
+      type,
+      content: stringifySourceValue(value),
+      ...(type === 'image'
+        ? { attachment: block.attachment as ImageAttachmentRef }
+        : { file: block.attachment as FileAttachmentRef }),
+    }
   }
   return { type, content: stringifySourceValue(value) }
 }
@@ -1055,8 +1066,9 @@ function expandSubCalls(
 function summarizeCall(
   name: string,
   argsRaw: string,
-): Pick<TrajectoryCellProps, 'text' | 'previewMarkdown'> {
+): Pick<TrajectoryCellProps, 'text' | 'previewMarkdown' | 'toolName'> {
   return {
+    toolName: name,
     text: name,
     ...(argsRaw === '' ? {} : { previewMarkdown: argsRaw }),
   }
@@ -1075,7 +1087,7 @@ function summarizeResult(
     }
   }
   const images = imageBlockCount(node.content)
-  if (images > 0) return { result: t('layout.imageOnly', { count: images }) }
+  if (images > 0) return { result: t('layout.imageCount', { count: images }) }
   return { result: t('record.noOutput') }
 }
 
@@ -1102,7 +1114,7 @@ function detailResult(node: ToolResultNode, t: TrajectoryTranslate): string {
     .join('\n')
   if (text !== '') return text
   const images = imageBlockCount(node.content)
-  if (images > 0) return t('layout.imageOnly', { count: images })
+  if (images > 0) return t('layout.imageCount', { count: images })
   if (
     node.content.length === 0
     || node.content.every(block =>

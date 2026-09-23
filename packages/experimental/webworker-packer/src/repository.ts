@@ -14,13 +14,15 @@ import { join, relative } from 'node:path'
 import { DSH_HOME_ENV } from '@deepseek-ai/dsh-home-paths'
 import type { ConfigTree, ImageTree, PackResult } from './pack.ts'
 
+export { packPreviewFixture } from './preview.ts'
+
 /**
  * Repository directories scanned for workspace and vendored packages. The
  * image only ever materializes runtime packages, which live here. The Landlock
  * package family contributes its unchanged JavaScript entry from `native/`;
  * examples and python never occur on a roster's dependency chain.
  */
-const WORKSPACE_SCAN_ROOTS = ['vendor', 'packages', 'native/landlock-run/packages', 'apps']
+const WORKSPACE_SCAN_ROOTS = ['vendor', 'packages', 'native/system/packages', 'apps']
 
 /** Composition entry point package: the `dsh` CLI, run from source. */
 const CLI_PACKAGE = 'apps/cli'
@@ -30,6 +32,16 @@ const CLI_ENTRY = `${CLI_PACKAGE}/src/bin.ts`
 
 /** Repository-owned deterministic filesystem content offered by the preview. */
 const PREVIEW_EXAMPLE_ROOT = 'packages/experimental/webworker-runtime/tests/fixtures/vfs-example'
+
+/** Config directory metadata owned by the CLI image packer, not the public plugin manifest. */
+interface ConfigTreeDeclaration {
+  /** Non-empty destination path in the image; mount values must be unique. */
+  mount: string
+  /** Non-empty source directory path relative to the declaring package root. */
+  path: string
+  /** Include the directory's YAML plugin rows in the package roster; absent means false. */
+  scanRoster?: boolean
+}
 
 /** One built-in Preview source and the trees packed into its overlay. */
 export interface PreviewFixture {
@@ -94,13 +106,6 @@ export function composeProfile(repoRoot: string, profile: string): string {
   } finally {
     rmSync(home, { recursive: true, force: true })
   }
-}
-
-/** One `dsh.configTrees` declaration entry, validated field by field. */
-interface ConfigTreeDeclaration {
-  mount: string
-  path: string
-  scanRoster?: boolean
 }
 
 /**

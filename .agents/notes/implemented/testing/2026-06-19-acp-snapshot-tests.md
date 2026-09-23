@@ -12,7 +12,7 @@ The blocker for a full-transcript test is the model: the agent's output is drive
 
 ## Decision
 
-A recorded-session snapshot starts a shipped profile through `dsh`, drives its public interface, and compares normalized output with committed expected outputs. ACP-owned scenarios additionally drive the stdio protocol and compare its transcript. A session log recorded once from the real API supplies all later model streams. The fixture is a [projection of the product's persisted JSONL](2026-08-18-session-snapshot-envelope-projection.md): its header and payloads remain, while body sequence/time envelopes are omitted.
+A recorded-session snapshot starts a shipped profile through `dsh`, drives its public interface, and compares normalized output with committed expected outputs. ACP-owned scenarios additionally drive the stdio protocol and compare its transcript. A session log recorded once from the real API supplies all later model streams. The fixture is a [projection of the product's persisted JSONL](../../archived/testing/2026-08-18-session-snapshot-envelope-projection.md): its header and payloads remain, while body sequence/time envelopes are omitted.
 
 The [session-log snapshot corpus decision](2026-08-24-session-log-snapshot-corpus.md) supersedes this note's ACP-specific placement and controller ownership. This note remains the rationale authority for session-log fixtures, replay derivation, exceptional overrides, normalization, and ACP transcript comparison.
 
@@ -20,7 +20,7 @@ The [session-log snapshot corpus decision](2026-08-24-session-log-snapshot-corpu
 
 Each scenario's selected highest parent generation is harvested from a real run: `session.jsonl` for v0 or `session.vN.jsonl` for a positive generation. The compact streams embedded in `assistant/message` and `assistant/attempt` reproduce model attempts; tool, message, and boundary events capture the harness behavior. One ordinary Session generation therefore serves as both replay source and behavioral expected output.
 
-Every current v2 session-format fixture uses one physical row per durable event. Retained v0 and v1 predecessor generations may contain their frozen packed-row representation and remain immutable. Ordinary replay and log comparison prove that the assembled process selects, migrates, consumes, and reproduces the current generation.
+Every current session-format fixture uses one physical row per durable event. Retained v0 and v1 predecessor generations may contain their frozen packed-row representation and remain immutable. Ordinary replay and log comparison prove that the assembled process selects, migrates, consumes, and reproduces the current generation.
 
 ### Replay derives the model script from the log
 
@@ -57,7 +57,7 @@ A snapshot run asserts **two** normalized outputs, because the harness's externa
 
 The surfaces are complementary: stdout covers the minimal automation wire, while JSONL covers loop, tool, and boundary structure that the wire intentionally omits.
 
-Normalization replaces session, cwd, protocol-id, timestamp, path, and process volatility; fixture projection omits body sequence/time envelopes without changing payload references. Record and refresh also store a generated workspace and its filesystem-resolved aliases as `{{cwd}}` in the replay fixture, so platform temp roots and random basenames do not affect recordings; authored temp paths and cwd values under an explicit `workspaceParent` remain literal. Scenarios constrain real bash use to stable commands. The stdout expected output remains wire-shaped JSONL and every raw line must parse as JSON. Ordinary Vitest snapshot updates write only the stdout expected output; the explicit `record` and `refresh` modes own replay-fixture writes.
+Normalization replaces session, cwd, protocol-id, timestamp, path, and process volatility; fixture projection omits body sequence/time envelopes without changing payload references. The shared snapshot writer expands top-level `sourceEventSeqs` ranges before saving, so record and refresh produce canonical fixture bytes independently of replay normalization. Record and refresh also store a generated workspace and its filesystem-resolved aliases as `{{cwd}}` in the replay fixture, so platform temp roots and random basenames do not affect recordings; authored temp paths and cwd values under an explicit `workspaceParent` remain literal. Scenarios constrain real bash use to stable commands. The stdout expected output remains wire-shaped JSONL and every raw line must parse as JSON. Ordinary Vitest snapshot updates write only the stdout expected output; the explicit `record` and `refresh` modes own replay-fixture writes.
 
 ### Isolation: normalization now, sandbox later
 

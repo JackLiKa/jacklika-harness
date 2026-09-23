@@ -172,11 +172,31 @@ function fallbackDefinition(start: () => string): ConversationNodeDefinition<str
 }
 
 describe('ConversationNodeAssembler', () => {
+  it('reports boundary changes only when the owning Turn location changes', () => {
+    const index = new ConversationLocationIndex()
+    const boundaries = [
+      at(SessionSeq(1), 'turn/start', { turn: 1 }),
+      at(SessionSeq(2), 'step/start', { turn: 1, step: 1 }),
+      at(SessionSeq(3), 'step/end', { turn: 1, step: 1 }),
+      at(SessionSeq(4), 'turn/end', { turn: 1 }),
+    ]
+    for (const boundary of boundaries) {
+      index.appendBoundary(boundary)
+      expect(index.takeChangedTurns()).toEqual([1])
+      const turn = index.snapshot().turns.get(1)
+      index.appendBoundary(boundary)
+      expect(index.snapshot().turns.get(1)).toBe(turn)
+      expect(index.takeChangedTurns()).toEqual([])
+    }
+  })
+
   it('publishes Location data through stable per-key sources', () => {
     const index = new ConversationLocationIndex()
     const turnStart = at(SessionSeq(1), 'turn/start', { turn: 1 })
     const stepStart = at(SessionSeq(2), 'step/start', { turn: 1, step: 1 })
     index.rebuild([input(turnStart), input(stepStart)])
+    expect(index.takeChangedTurns()).toEqual([1])
+    expect(index.takeChangedTurns()).toEqual([])
     const location = index.locationOf(stepStart)
     if (location.kind !== 'step') throw new Error('scope probe requires a Step Location')
     const source = location.step.data.source('scope-probe')
@@ -192,6 +212,7 @@ describe('ConversationNodeAssembler', () => {
     }])).toBe(true)
     expect(source.getSnapshot()).toBe(initial)
     expect(listener).not.toHaveBeenCalled()
+    expect(index.takeChangedTurns()).toEqual([1])
 
     index.publishData()
     expect(listener).toHaveBeenCalledOnce()
@@ -204,6 +225,7 @@ describe('ConversationNodeAssembler', () => {
     }])
     index.publishData()
     expect(listener).not.toHaveBeenCalled()
+    expect(index.takeChangedTurns()).toEqual([1])
 
     const changed = { value: 2 }
     index.replaceData([{
@@ -1291,7 +1313,7 @@ describe('ConversationNodeAssembler', () => {
   it('carries explicit coordinates across coordinate-free events in a partial window and live tail', () => {
     const definition: ConversationNodeDefinition<null> = {
       kind: 'location-probe',
-      match: event => (event.type as string) === 'tool/code-dispatch-start'
+      match: event => (event.type as string) === 'tool/ptc-dispatch-start'
         ? { id: String(event.seq), role: 'start' }
         : null,
       start: () => null,
@@ -1310,11 +1332,11 @@ describe('ConversationNodeAssembler', () => {
     )
     assembler.replaceWindow([
       input(at(SessionSeq(10), 'tool/call', { turn: 2, step: 3, callId: 'root', name: 'x', arguments: '{}' })),
-      input(at(SessionSeq(11), 'tool/code-dispatch-start', { rootCallId: 'root', subCallId: 'a' })),
+      input(at(SessionSeq(11), 'tool/ptc-dispatch-start', { rootCallId: 'root', subCallId: 'a' })),
     ], true)
     assembler.flush()
 
-    assembler.append(input(at(SessionSeq(12), 'tool/code-dispatch-start', { rootCallId: 'root', subCallId: 'b' })))
+    assembler.append(input(at(SessionSeq(12), 'tool/ptc-dispatch-start', { rootCallId: 'root', subCallId: 'b' })))
     assembler.flush()
 
     expect([...testSnapshot(assembler)?.nodes.values() ?? []].map(value => value.data))

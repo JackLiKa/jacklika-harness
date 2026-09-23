@@ -230,7 +230,7 @@ describe('WebhookRuntime', () => {
     } as never)
     ctx.provide('agentPresets', {
       resolve: async (id: string) => ({ id }),
-      standingKeyFor: async () => ({}),
+      acquireScope: async () => ({ key: {}, [Symbol.asyncDispose]: async () => {} }),
       mount: async (_agentCtx: unknown, id: string) => ({ id }),
     } as never)
     ctx.provide('workspaceRegistry', {
@@ -242,16 +242,17 @@ describe('WebhookRuntime', () => {
     } as never)
     ctx.provide('sessionTitle', { rename: () => ({}) } as never)
     ctx.provide('agents', {
-      create: async (options: { setup?: (agentCtx: unknown) => Promise<void> }) => {
-        await options.setup?.({ on: () => () => {} })
-        return {
-          agent: {
-            session,
-            followup: (message: unknown) => {
-              messages.push(message)
-              if (messages.length === 2) followedTwice.resolve(true)
-            },
+      create: async (options: { setup?: (agentCtx: unknown, agent: unknown) => Promise<void> }) => {
+        const agent = {
+          session,
+          followup: (message: unknown) => {
+            messages.push(message)
+            if (messages.length === 2) followedTwice.resolve(true)
           },
+        }
+        await options.setup?.({ on: () => () => {} }, agent)
+        return {
+          agent,
           dispose: async () => {},
         }
       },

@@ -51,7 +51,7 @@ Every owner disposes its observation. `retain()` creates another lease over the 
 
 ### Source resolution and lifetime
 
-An observation binds all returned fields to one lifecycle witness. Callers do not combine a header from corpus listing, events from persistence, and projections from a later live Session. The selected header and event prefix produce the cursor and projection snapshot together.
+An observation binds all returned fields to one lifecycle witness. Callers do not combine a header from corpus listing, events from persistence, and projections from a later live Session. The selected header and event prefix produce the cursor and projection snapshot together. A live observation fixes its cut as the log length at read time and materializes `events` on the first access; the log only appends, so that prefix is identical however late a consumer reads it, and a consumer that needs only the header, cursor, or projections never copies the log.
 
 Live preference is checked both before and after a cold borrow. The second check closes the race in which an Agent attaches while persistence is loading. If persistence itself reports that a live source won but that source has already detached by the time SessionQuery examines it, resolution restarts instead of publishing an unowned reference.
 
@@ -108,11 +108,11 @@ These distinctions prevent one overloaded `undefined` from representing cache mi
 | Follow opening baseline | Complete for the Host composition | Exact opening cursor | Capability absent |
 | Projection frame | One whole key | Event sequence carried by the frame | Not applicable |
 
-The Client stores one row per key with its sequence number. A newer hint, baseline, or frame replaces a row; an equal or older input is ignored. Reconnect can therefore replace the event window without rolling back a projection frame that was already accepted at a later sequence.
+The Client stores one row per key. A row the connected Host computed carries its sequence number: a newer baseline or frame replaces it, an equal or older input is ignored, and reconnect can therefore replace the event window without rolling back a projection frame that was already accepted at a later sequence. A list hint viewed from the persisted cache carries no comparable sequence number and yields to every Host-sequenced write ([projection cache listing identity and cached rows](2026-09-19-projection-cache-listing-identity-and-cached-rows.md)).
 
 The list view reads the same per-Session store as the opened Session. Hints can populate title, preset, and other list presentation before follow completes; the opening baseline then converges that state without creating a second summary-only authority.
 
-The per-Session Client projection store accepts list hints, the follow baseline, and later whole-value frames under one higher-sequence-wins rule. It never folds Session events. A baseline or frame may advance a hinted value, while an older cut cannot overwrite a newer row.
+The per-Session Client projection store accepts list hints, the follow baseline, and later whole-value frames. Higher-sequence-wins applies among Host-sequenced values; cached list hints sit below all of them. It never folds Session events. A baseline or frame may advance a hinted value, while an older cut cannot overwrite a newer sequenced row.
 
 Data that is not derived from one Session remains outside projections. `session/modelCatalog` owns the Host-generation model catalog, and `agentPresets/list` owns the configurable preset roster. A selector combines the relevant catalog with the Session's `modelSelection` or `agentPreset` projection only when both inputs are ready. During refresh it may retain the last complete catalog; before the first complete pair it reports loading instead of rendering a guessed name or availability verdict.
 
@@ -120,7 +120,7 @@ Client-local interaction state also remains local: loading and error status, an 
 
 ### Domain applications
 
-- **Title and list metadata.** Cached projection hints may render an existing title and determine blankness or recency. Missing hints leave those facts unknown; only the bounded small-log policy may resolve them during listing.
+- **Title and list metadata.** Cached projection hints may render an existing title and determine blankness or recency. Missing hints leave those facts unknown; only the bounded small-log policy may resolve them during listing. The Client reconciles list rows with the current metadata projection: nonblank evidence excludes a Session from blank reuse, and the later prompt timestamp supplies recency. Projection stores outlive lazy Client Session instances, so instantiation reads retained metadata even before a list row is available. A stale list response cannot override a newer history or control projection.
 - **Model selection.** `model/selection` records a complete provider, model, and optional reasoning effort. `modelSelection` distinguishes the last request's route from a later selection pending consumption by a request header.
 - **Agent preset.** The projection initializes from immutable Session metadata and advances on preset-selection events. A missing or `null` value is not replaced with the deployment default for an existing Session.
 - **Subagent identity.** The `subagent` unit remains the sole descriptor interpreter. Listing obtains candidates from the shared corpus and resolves values through live state, projection cache, or an observation rather than scanning events itself.
@@ -164,10 +164,10 @@ These rules apply to new Session-derived Client state even when a direct event s
 
 ### Relationship to existing decisions
 
-- [Reusable Session preparation](2026-08-05-session-preparation.md) owns cold materialization, repair, reservation, and publication. Observation adds a shared read lease over that prepared object; it does not move preparation into SessionQuery.
+- [Reusable Session preparation](../../archived/architecture/2026-08-05-session-preparation.md) owns cold materialization, repair, reservation, and publication. Observation adds a shared read lease over that prepared object; it does not move preparation into SessionQuery.
 - [Session history and Remote event transport](2026-08-18-session-history-and-event-transport.md) owns stream generations and replacement semantics. This decision supplies the exact snapshot that opens each journal generation.
-- [Projection state and Client views](2026-08-19-session-projection-state-and-client-views.md) owns the distinction between Host fold state and Client values. This decision governs where those values are consumed and how partial list hints differ from a complete baseline.
-- [Subagent identity projection](2026-08-06-subagent-list-identity-projection.md) continues to own descriptor folding, the serializable `null` sentinel, and the own-suffix sequence check. This decision supersedes only its independent corpus merge and direct cold-inspection path: listing now uses SessionQuery's corpus and observation.
+- [Projection state and Client views](../../archived/architecture/2026-08-19-session-projection-state-and-client-views.md) owns the distinction between Host fold state and Client values. This decision governs where those values are consumed and how partial list hints differ from a complete baseline.
+- [Subagent identity projection](../../archived/architecture/2026-08-06-subagent-list-identity-projection.md) continues to own descriptor folding, the serializable `null` sentinel, and the own-suffix sequence check. This decision supersedes only its independent corpus merge and direct cold-inspection path: listing now uses SessionQuery's corpus and observation.
 - The broader [session projection and command-log proposal](../../proposed/architecture/2026-07-27-session-projection-and-command-log.md) remains proposed for the portions not represented by shipped code. This decision records the shipped observation and Client-ownership subset.
 
 ## Verification

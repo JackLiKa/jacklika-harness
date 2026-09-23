@@ -336,14 +336,11 @@ function mainLog(): {
         step: 1,
         message: {
           id: `${call.id}-result`,
-          role: 'user',
-          content: [{
-            type: 'tool-result',
-            toolCallId: call.id,
-            content: [{ type: 'text', text: call.result }],
-            isError: call.error !== undefined,
-          }],
+          role: 'tool',
+          toolCallId: call.id,
           source: { kind: 'tool', callId: call.id },
+          content: [{ type: 'text', text: call.result }],
+          isError: call.error !== undefined,
         },
         ...call.meta === undefined ? {} : { meta: call.meta },
         ...call.error === undefined ? {} : { error: call.error },
@@ -439,7 +436,7 @@ function renderLog(
   return `${JSON.stringify(toHeaderLine(storage.meta, storage.inheritedEventCount))}\n${eventLines(events)}\n`
 }
 
-/** Build every committed fixture file as repository-relative UTF-8 text. */
+/** Build current-generation fixture files as fixture-relative UTF-8 text; committed predecessors remain untouched. */
 export function buildVfsExampleFiles(): ReadonlyMap<string, string> {
   const main = mainLog()
   const project = projectKey(WORKSPACE)

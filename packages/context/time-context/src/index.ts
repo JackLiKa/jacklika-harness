@@ -10,6 +10,13 @@ import z from '@deepseek-ai/schemastery'
 import { z as zod } from 'zod'
 import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'time-context': { kind: 'time-context' } & ContextFormed
+  }
+}
+
 import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-projection'
@@ -80,6 +87,7 @@ function formatDuration(elapsedMs: number): string {
 function requestMessages(agent: Agent, turn: number, proposed: readonly UserMessage[]): UserMessage[] {
   const entered: UserMessage[] = []
   for (let seq = agent.session.seq - 1; seq >= 0; seq -= 1) {
+    // oxlint-disable-next-line typescript/no-deprecated -- Existing Session history read; migration deferred.
     const event = agent.session.eventAt(SessionSeq(seq))
     if (event?.type === 'turn/start' && event.data.turn === turn) {
       return [...entered.reverse(), ...proposed]
@@ -159,7 +167,7 @@ export function apply(ctx: Context, config: Config): void {
         return state.lastTurnInjectionTime === null ? state : { ...state, lastTurnInjectionTime: null }
       }
       if (event.type === 'user/message') {
-        const injected = event.data.source.kind === 'plugin' && event.data.source.plugin === name
+        const injected = event.data.source.kind === name
         const withMessage = state.lastMessageTime === event.time
           ? state
           : { ...state, lastMessageTime: event.time }
@@ -213,7 +221,7 @@ export function apply(ctx: Context, config: Config): void {
         ...decision.messages,
         createUserMessage({
           content: [{ type: 'text', text }],
-          source: { kind: 'plugin', plugin: name, form: 'snapshot', sections: [{ name, text }] },
+          source: { kind: name, form: 'snapshot', sections: [{ name, text }] },
         }),
       ],
     }

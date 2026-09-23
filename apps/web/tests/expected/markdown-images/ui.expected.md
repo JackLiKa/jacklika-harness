@@ -1,40 +1,34 @@
 - banner:
-  - navigation "Session hierarchy":
-    - button "Markdown image policy" [disabled]
-  - button "Session log":
-    - text: Session log
-    - img
+  - navigation "Session hierarchy": Markdown image policy
+  - button "More actions"
+  - button "Open right sidebar"
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"
 - text: Show the Markdown image policy. {{clock}}
-- button "Copy":
-  - img
+- button "Copy"
+- status: Worked
+- button "Took {{duration}}" [disabled]
 - heading "Markdown images" [level=2]
 - paragraph:
   - img "Remote test image"
 - paragraph: Local test image
+- paragraph:
+  - img "Workspace test image"
+- paragraph: Oversized image
+- paragraph:
+  - img "Outside workspace image"
+- paragraph: Missing image
+- paragraph: {{cwd}}/corrupt.png
 - paragraph: REMOTE_IMAGE_DONE
-- button "Copy":
-  - img
-- button "Good response":
-  - img
-- button "Bad response":
-  - img
-- button "Branch into a new conversation":
-  - img
-- button "Ran for {{duration}}":
-  - img
-  - text: Ran for {{duration}}
+- button "Copy"
+- button "Good response"
+- button "Bad response"
+- button "Branch into a new conversation"
 - text: {{clock}}
-- textbox "Message or run a task... / commands, @ files or sessions"
-- button "Commands":
-  - img
-- button "Add attachment":
-  - img
+- textbox "Message or run a task, / commands, @ files or sessions"
+- button "Add files or run commands"
 - 'button "Access mode, current: Workspace Write"': Workspace Write
-- button "Select model, current DeepSeek-V4-Flash":
-  - text: DeepSeek-V4-Flash
-  - img
+- button "Select model, current DeepSeek-V4-Flash": DeepSeek-V4-Flash
 - button "Send message" [disabled]
-- text: 1 turns · 1 steps LLM {{duration}}
+- button "1 turns 1 steps"

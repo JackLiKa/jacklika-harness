@@ -2,7 +2,6 @@ import { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { LocalBashExecutor } from '@deepseek-ai/dsh-bash-local'
 import * as BashEnvPlugin from '@deepseek-ai/dsh-shell-env'
@@ -38,10 +37,10 @@ export const TODO_SYSTEM_PROMPT = 'You are a coding agent. For multi-step work, 
 /** Options for {@link codingHarness}. */
 export interface CodingHarnessOptions {
   /**
-   * Deployment persona for the tree (the system-prompt plugin's `persona`
-   * config — per-context, not per-agent). Omitted ⇒ no persona section.
+   * Deployment persona prefix for the tree (the system-prompt plugin's `personaPrefix`
+   * config — per-context, not per-agent). Omitted ⇒ no persona prefix section.
    */
-  persona?: string
+  personaPrefix?: string
   /** Durable JSONL persistence root (the resume suite needs it; others stay file-free). */
   persistenceRoot?: string
   /**
@@ -50,19 +49,34 @@ export interface CodingHarnessOptions {
    * compaction plugin (the default suites run without it).
    */
   compact?: BasicCompactionConfig
-  /** Test-only context capacity advertised for `deepseek-v4-flash`. */
+  /**
+   * Test-only context capacity advertised for `deepseek-v4-flash`. Automatic
+   * pressure scales the message budget left after the request's reserved
+   * output tokens, so this capacity must exceed the advertised output cap.
+   */
   modelContextWindow?: number
+  /**
+   * Test-only per-request output cap advertised for `deepseek-v4-flash`, which
+   * the adapter forwards as `max_tokens` and pressure excludes from the
+   * capacity above.
+   */
+  modelMaxTokens?: number
 }
 
 export async function codingHarness(workdir: string, options: CodingHarnessOptions = {}): Promise<Context> {
   const ctx = new Context()
-  await ctx.plugin(SessionProjectionRegistry)
   await mountAgentLoopTestDependencies(ctx, {
-    systemPrompt: { persona: options.persona ?? '' },
+    systemPrompt: { personaPrefix: options.personaPrefix ?? '' },
   })
   await ctx.plugin(AgentLoop, { agents: [] })
-  await ctx.plugin(LlmDeepSeek, options.modelContextWindow === undefined ? {} : {
-    models: [{ id: 'deepseek-v4-flash', contextWindow: options.modelContextWindow }],
+  await ctx.plugin(LlmDeepSeek, {
+    ...options.modelContextWindow === undefined && options.modelMaxTokens === undefined ? {} : {
+      models: [{
+        id: 'deepseek-v4-flash',
+        ...options.modelContextWindow === undefined ? {} : { contextWindow: options.modelContextWindow },
+        ...options.modelMaxTokens === undefined ? {} : { maxTokens: options.modelMaxTokens },
+      }],
+    },
   })
   await ctx.plugin(LocalSubprocessRuntime)
   await ctx.plugin(BashEnvPlugin)

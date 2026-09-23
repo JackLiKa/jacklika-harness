@@ -45,7 +45,6 @@ async function setup(script: Script) {
   await mountAgentLoopTestDependencies(ctx)
   await mountInvariants(ctx)
   await ctx.plugin(AgentLoop, { agents: [] })
-  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(SubagentRuntime)
   await ctx.plugin(fork, { providerName: 'fork' })
   ctx.llm.registerAdapter(['mock'], new MockAdapter(script))
@@ -53,7 +52,7 @@ async function setup(script: Script) {
   return { ctx, parent }
 }
 
-function text(blocks: { type: string; text?: string }[]): string {
+function text(blocks: readonly { type: string; text?: string }[]): string {
   return blocks.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 

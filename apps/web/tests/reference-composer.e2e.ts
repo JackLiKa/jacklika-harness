@@ -3,11 +3,13 @@
 // and projects each pick as a complete inline range without issuing a model call.
 import { mkdir, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Browser, Locator, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { abbreviateHomePath } from '@deepseek-ai/dsh-util-workspace-path'
 import {
   SESSION_FORMAT_VERSION,
   Session,
@@ -43,6 +45,15 @@ async function settledSourceOption(menu: Locator): Promise<Locator> {
   const source = menu.getByRole('option', { name: new RegExp(SOURCE_SESSION_ID) })
   await expect.poll(() => source.count(), { timeout: 15_000 }).toBe(1)
   return source
+}
+
+// Clear retained suggestions and insert one complete query so an intermediate
+// prefix cannot satisfy the caller's wait for a ready result row.
+async function replaceReferenceQuery(page: Page, input: Locator, text: string): Promise<void> {
+  await writeComposerDraft(page, input, '')
+  await page.getByRole('listbox', { name: 'Trigger suggestions' }).waitFor({ state: 'hidden' })
+  await input.click()
+  await page.keyboard.insertText(text)
 }
 
 /** Build one closed source session with a stable title for reference discovery. */
@@ -171,7 +182,10 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     // Session rows are dated from the live Host list, so their age bucket
     // advances while the suite runs.
     const snapshot = await captureStableAria(
-      page, '[role="listbox"]', scaffold.workspaceCwd, { normalizeAge: true },
+      page, '[role="listbox"]', scaffold.workspaceCwd, {
+        normalizeAge: true,
+        replacements: [[abbreviateHomePath(scaffold.workspaceCwd, homedir()), '{{cwd}}']],
+      },
     )
     await compareOrRefreshGolden(MENU_EXPECTED, snapshot, MODE)
     expect(snapshot).toContain('Files & folders')
@@ -218,9 +232,10 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     const input = page.locator('[data-composer-input]').first()
     const menu = page.getByRole('listbox', { name: 'Trigger suggestions' })
 
-    await writeComposerDraft(page, input, '@reference')
+    await writeComposerDraft(page, input, '@reference.txt')
     await expect.poll(() => input.locator('[data-composer-chip]').count()).toBe(0)
-    await menu.getByRole('option', { name: /reference\.txt/ }).click()
+    await expect.poll(() => menu.getByRole('option').allTextContents()).toEqual(['reference.txt'])
+    await menu.getByRole('option', { name: 'reference.txt', exact: true }).click()
     await expect.poll(() => input.locator('[data-composer-chip]').count()).toBe(1)
 
     // The #2813 gesture: collapse the caret to the document start, directly
@@ -248,9 +263,10 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     const input = page.locator('[data-composer-input]').first()
     const menu = page.getByRole('listbox', { name: 'Trigger suggestions' })
 
-    await writeComposerDraft(page, input, '@reference')
+    await writeComposerDraft(page, input, '@reference.txt')
     await expect.poll(() => input.locator('[data-composer-chip]').count()).toBe(0)
-    await menu.getByRole('option', { name: /reference\.txt/ }).click()
+    await expect.poll(() => menu.getByRole('option').allTextContents()).toEqual(['reference.txt'])
+    await menu.getByRole('option', { name: 'reference.txt', exact: true }).click()
     await expect.poll(() => input.locator('[data-composer-chip]').count()).toBe(1)
 
     // First ArrowLeft crosses the trailing space; the second steps across the
@@ -286,7 +302,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
 
     // Settle: Enter on the highlighted folder row resolves the folder itself
     // as an atomic chip — folder glyph, no trigger character, one unit.
-    await writeComposerDraft(page, input, '@folderx')
+    await replaceReferenceQuery(page, input, '@folderx')
     // First folder query on this page: allow the Host index a cold start.
     await menu.getByRole('option', { name: /^folderx\// }).waitFor({ timeout: 60_000 })
     await page.keyboard.press('Enter')
@@ -297,7 +313,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
 
     // Tab drills: the literal descent text stays editable and the open menu
     // lists the folder's children.
-    await writeComposerDraft(page, input, '@folderx')
+    await replaceReferenceQuery(page, input, '@folderx')
     await menu.getByRole('option', { name: /^folderx\// }).waitFor()
     await page.keyboard.press('Tab')
     await expect.poll(() => input.textContent()).toBe('@folderx/')
@@ -305,7 +321,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
 
     // The row chevron drills the same way by pointer, header included: a
     // pointer descent reaches the same listing a Tab descent does.
-    await writeComposerDraft(page, input, '@folderx')
+    await replaceReferenceQuery(page, input, '@folderx')
     const row = menu.getByRole('option', { name: /^folderx\// })
     await row.waitFor()
     await row.getByRole('button', { name: 'Browse folder' }).click()
@@ -330,12 +346,12 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     const crumbs = page.getByRole('navigation', { name: 'Folder navigation' })
 
     // A path the user typed carries its own context: no header.
-    await writeComposerDraft(page, input, '@folderx/')
+    await replaceReferenceQuery(page, input, '@folderx/')
     await menu.getByRole('option', { name: /child\.txt/ }).waitFor({ timeout: 60_000 })
     await expect.poll(() => crumbs.count()).toBe(0)
 
     // The same listing reached by drilling owes the user the way back.
-    await writeComposerDraft(page, input, '@folderx')
+    await replaceReferenceQuery(page, input, '@folderx')
     await menu.getByRole('option', { name: /^folderx\// }).waitFor()
     await page.keyboard.press('Tab')
     await menu.getByRole('option', { name: /child\.txt/ }).waitFor()
@@ -350,7 +366,8 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
 
     // A crumb above the current step re-lists that directory and keeps the
     // header, which now names the step it returned to.
-    await writeComposerDraft(page, input, '@folderx/nested')
+    await replaceReferenceQuery(page, input, '@folderx/nested')
+    await expect.poll(() => menu.getByRole('option', { name: /child\.txt/ }).count()).toBe(0)
     const nested = menu.getByRole('option', { name: /^nested\// })
     await nested.waitFor()
     await nested.getByRole('button', { name: 'Browse folder' }).click()
@@ -373,7 +390,7 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     expect(tripwire.warnings).toEqual([])
   })
 
-  it('renders the durable direct-message then recall order', async () => {
+  it('renders the direct message while retaining the following recall only in the log', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-reference-order'))
     const group = page.getByRole('treeitem', { name: /Ungrouped/ })
     await group.waitFor({ timeout: 15_000 })
@@ -385,12 +402,20 @@ describe.skipIf(MODE === 'record')('web e2e: file and session references through
     const target = groupSection.locator('[role="treeitem"]').nth(1)
     await target.waitFor({ timeout: 15_000 })
     await target.click()
-    await page.getByRole('button', { name: /^Session recall\s*Research notes$/ }).waitFor({ timeout: 15_000 })
+    await page.locator('[data-chat-flow-kind="user"]').filter({ hasText: 'Research notes' }).waitFor({ timeout: 15_000 })
+    const session = scaffold.ctx.sessions.get(SessionId(TARGET_SESSION_ID))
+    if (session === undefined) throw new Error('reference target session is unavailable')
+    const inputs = session.snapshotEvents().filter(event => event.type === 'user/message')
+    expect(inputs.map(event => event.data.source.kind)).toEqual(['user', 'session-reference'])
+    expect(inputs[0]?.seq).toBeLessThan(inputs[1]!.seq)
+    expect(JSON.stringify(inputs[1]?.data)).toContain('<referenced-sessions>snapshot</referenced-sessions>')
+    expect(await page.locator('[data-chat-flow-kind="context"]').count()).toBe(0)
 
     const snapshot = (await captureStableAria(page, '[class*="centerCol"]', scaffold.workspaceCwd))
       .split(TARGET_SESSION_ID).join('{{targetId}}')
     await compareOrRefreshGolden(ORDER_EXPECTED, snapshot, MODE)
-    expect(snapshot.indexOf('Research notes what changed?')).toBeLessThan(snapshot.indexOf('Session recall Research notes'))
+    expect(snapshot).toContain('Research notes what changed?')
+    expect(snapshot).not.toContain('Session recall Research notes')
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
     await assertFixtureInventory(SNAPSHOT_DIR, ['menu.expected.md', 'order.expected.md'])

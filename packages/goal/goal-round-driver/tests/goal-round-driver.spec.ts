@@ -8,10 +8,16 @@ import GoalService, { GoalId } from '@deepseek-ai/dsh-goal'
 import type { GoalView } from '@deepseek-ai/dsh-goal'
 import { createUserMessage, LlmAdapter, LlmError  } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { UserMessage } from '@deepseek-ai/dsh-session'
-import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import * as goalSession from '../src/index.ts'
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'test': { kind: 'test' } & ContextFormed
+  }
+}
 
 type ScriptEntry = StreamChunk[] | Error | 'hang' | ((options: GenerateOptions) => StreamChunk[])
 
@@ -90,7 +96,6 @@ async function harness(script: ScriptEntry[]): Promise<Harness> {
   const ctx = new Context()
   contexts.push(ctx)
   await mountAgentLoopTestDependencies(ctx)
-  await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(GoalService)
   const driver = await ctx.plugin(goalSession)
   await ctx.plugin(AgentLoop, { agents: [] })
@@ -217,7 +222,6 @@ describe('same-session goal driving', () => {
     const ctx = new Context()
     contexts.push(ctx)
     await mountAgentLoopTestDependencies(ctx)
-    await ctx.plugin(SessionProjectionRegistry)
     await ctx.plugin(GoalService)
     await ctx.plugin(AgentLoop, { agents: [] })
     const adapter = new ScriptedAdapter([textResponse('after resume')])
@@ -484,7 +488,7 @@ describe('same-session goal driving', () => {
     const test = await harness([textResponse('side contexts'), textResponse('revised goal')])
     const claimedContext = createUserMessage({
       content: [{ type: 'text', text: 'claimed context to restore' }],
-      source: { kind: 'plugin', plugin: 'test' },
+      source: { kind: 'test' },
     })
     const roundZeroContext = createUserMessage({
       content: [{ type: 'text', text: 'obsolete goal context' }],
@@ -492,11 +496,11 @@ describe('same-session goal driving', () => {
     })
     const queuedStepContext = createUserMessage({
       content: [{ type: 'text', text: 'context already queued for the next step' }],
-      source: { kind: 'plugin', plugin: 'test' },
+      source: { kind: 'test' },
     })
     const queuedTurnContext = createUserMessage({
       content: [{ type: 'text', text: 'context already queued for the next turn' }],
-      source: { kind: 'plugin', plugin: 'test' },
+      source: { kind: 'test' },
     })
     let staged = false
     const stopInserted = onInboxMessage(test.ctx, test.agent, (message) => {
@@ -940,7 +944,7 @@ describe('same-session goal driving', () => {
   it('resets process-local scheduling state at a session-start edge', async () => {
     const test = await harness([textResponse('after explicit resume')])
     const created = test.ctx.goals.create(test.agent, { objective: 'restart safely', maxGoalRounds: 1 })
-    agentEvents(test.ctx, test.agent).emit('agent/session-start', { source: 'resume' })
+    await agentEvents(test.ctx, test.agent).serial('agent/created', { source: 'resume' })
     await Promise.resolve()
 
     expect(test.ctx.goals.get(test.agent)).toMatchObject({ activation: 'disarmed', roundsStarted: 0 })

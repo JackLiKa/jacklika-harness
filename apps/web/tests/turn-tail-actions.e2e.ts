@@ -13,17 +13,17 @@ import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
-import { afterEach, describe, expect, it, onTestFailed } from 'vitest'
+import { afterEach, describe, expect, it, onTestFailed, vi } from 'vitest'
 import type { ReplayOverrideDoc } from '@deepseek-ai/dsh-llm-replay'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import {
-  assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
+  acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, compareOrRefreshGolden, fixtureUserPrompts,
   launchWebScaffold, recordFixture, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { connectFreshWorkspace, newEnglishPage, saveFailureShot } from './support.ts'
+import { openSettings, connectFreshWorkspace, expandOwningTurnProcess, newEnglishPage, saveFailureShot, WEB_FIXTURE_TIME } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('../../../snapshots/web/turn-tail-actions', import.meta.url))
-const FIXTURE = join(SNAPSHOT_DIR, 'session.v2.jsonl')
+const FIXTURE = join(SNAPSHOT_DIR, 'session.v3.jsonl')
 // Three goldens for the same message: parked mid-turn, aborted, and completed.
 const RUNNING_EXPECTED = join(SNAPSHOT_DIR, 'running.expected.md')
 const SETTLED_EXPECTED = join(SNAPSHOT_DIR, 'settled.expected.md')
@@ -57,6 +57,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await closing?.close().catch((error: unknown) => failures.push(error))
     if (sidecarDir !== undefined) await rm(sidecarDir, { recursive: true, force: true }).catch((error: unknown) => failures.push(error))
     sidecarDir = undefined
+    vi.restoreAllMocks()
     if (failures.length === 1) throw failures[0]
     if (failures.length > 1) throw new AggregateError(failures, 'turn-tail-actions teardown failed')
   })
@@ -64,9 +65,19 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
   /** Boot scaffold + page, materializing the sidecar before the replay row installs. */
   async function launch(
     buildOverride?: (sidecarHome: string) => ReplayOverrideDoc,
-    paceMs?: number,
+    // Throughput snapshots require a nonzero interval between replayed chunks.
+    paceMs = 1,
   ): Promise<void> {
     sessionEvents = []
+    browser = await chromium.launch()
+    page = await newEnglishPage(browser)
+    if (MODE !== 'record') {
+      // Playwright records real installation time; align Host time before booting it.
+      await page.clock.install({ time: WEB_FIXTURE_TIME })
+      const now = await page.evaluate(() => Date.now())
+      const startedAt = performance.now()
+      vi.spyOn(Date, 'now').mockImplementation(() => now + Math.floor(performance.now() - startedAt))
+    }
     let overridePath: string | undefined
     if (buildOverride !== undefined) {
       sidecarDir = await mkdtemp(join(tmpdir(), 'dsh-web-e2e-sidecar-'))
@@ -80,12 +91,10 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
           replayFixture: FIXTURE,
           ...(overridePath === undefined ? {} : { replayOverride: overridePath }),
           compareReplaySession: overridePath === undefined,
-          ...(paceMs === undefined ? {} : { paceMs }),
+          paceMs,
         },
     )
     scaffold.ctx.on('session/event', (_session, event: SessionEvent) => { sessionEvents.push(event) })
-    browser = await chromium.launch()
-    page = await newEnglishPage(browser)
     tripwire = watchConsole(page)
     await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
     await page.waitForSelector('[class*="frame"]', { timeout: 30_000 })
@@ -134,7 +143,10 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     // The marker IS the synchronization: the second call is provably parked,
     // so the first step's message and tool result are already durable.
     await expect.poll(() => existsSync(marker), { timeout: 20_000 }).toBe(true)
-    expect(await page.locator('[data-turn-process]').count()).toBe(0)
+    const runningProcess = page.locator('[data-turn-process]')
+    expect(await runningProcess.count()).toBe(1)
+    expect(await runningProcess.isDisabled()).toBe(true)
+    expect(await runningProcess.getAttribute('aria-expanded')).toBe('true')
     await expect.poll(
       () => page.getByRole('status').filter({ hasText: 'Deep diving...' }).isVisible(),
       { timeout: 10_000 },
@@ -168,7 +180,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
   }, 120_000)
 
   it.skipIf(MODE === 'record')('shows exact completed-Turn usage and expands its available facts', async () => {
-    await launch()
+    await launch(undefined, 5)
     onTestFailed(() => saveFailureShot(page, 'web-e2e-turn-usage-expanded'))
     const { settled } = await sendPrompt(120_000)
     await settled
@@ -176,11 +188,9 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     const trigger = page.getByRole('button', { name: /Usage 15\.8K tok/ })
     await expect.poll(() => trigger.count(), { timeout: 10_000 }).toBe(1)
     expect(await trigger.getAttribute('aria-expanded')).toBe('false')
-    // The usage pill carries the icon and the turn total; the time pill beside
-    // it carries the run time, and both keep their details dialog-only.
     expect(await trigger.textContent()).toBe('Usage 15.8K tok')
     const timeTrigger = page.getByRole('button', { name: /^Ran for \S+$/ })
-    expect(await timeTrigger.count()).toBe(1)
+    expect(await timeTrigger.count()).toBe(0)
     expect(await page.locator('[data-turn-tail]').getByText(/tok\/s|TTFT/).count()).toBe(0)
     expect(await page.getByRole('dialog').count()).toBe(0)
 
@@ -197,22 +207,22 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await page.keyboard.press('Escape')
     expect(await page.getByRole('dialog').count()).toBe(0)
 
-    await timeTrigger.click()
-    const timeDialog = page.getByRole('dialog', { name: 'Turn time and speed' })
-    expect(await timeDialog.count()).toBe(1)
-    expect(await timeDialog.getByText(/tok\/s/).count()).toBe(1)
-    expect(await timeDialog.getByText('Time to first token (TTFT)', { exact: true }).count()).toBe(1)
-    await page.keyboard.press('Escape')
     await trigger.click()
 
     const expanded = await captureStableAria(page, '[class*="centerCol"]', scaffold!.workspaceCwd)
     await compareOrRefreshGolden(USAGE_EXPANDED_EXPECTED, expanded, MODE)
+
+    const warningStart = tripwire.warnings.length
+    await page.reload({ waitUntil: 'load' })
+    await expect.poll(() => trigger.count(), { timeout: 15_000 }).toBe(1)
+    acknowledgeReloadConnectionLoss(tripwire, warningStart)
+    expect(await timeTrigger.count()).toBe(0)
     expect(tripwire.pageErrors).toEqual([])
     expect(tripwire.warnings).toEqual([])
   }, 120_000)
 
   it.skipIf(MODE === 'record')('folds the Turn process after the completed reply becomes the answer', async () => {
-    await launch()
+    await launch(undefined, 5)
     onTestFailed(() => saveFailureShot(page, 'web-e2e-turn-tail-actions-completed'))
     const { settled } = await sendPrompt()
     await settled
@@ -233,7 +243,9 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     expect(tripwire.warnings).toEqual([])
   }, 60_000)
 
-  it.skipIf(MODE === 'record')('switches a completed Turn between Compact and Normal', async () => {
+  it.skipIf(MODE === 'record').each([
+    ['detailed', 'Detailed'], ['expanded', 'Expanded'],
+  ] as const)('preserves whole-Turn folding in %s mode', async (mode, label) => {
     await launch()
     onTestFailed(() => saveFailureShot(page, 'web-e2e-turn-process-setting'))
     const { settled } = await sendPrompt()
@@ -244,20 +256,33 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     expect(await process.getAttribute('aria-expanded')).toBe('false')
     expect(await tool.isVisible()).toBe(false)
 
-    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await openSettings(page, 'en')
     const dialog = page.getByRole('dialog', { name: 'Settings' })
-    await dialog.getByRole('button', { name: 'Compact', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Normal', exact: true }).click()
+    await dialog.getByText('Work details', { exact: true }).locator('../..')
+      .getByRole('button', { name: 'Compact', exact: true }).click()
+    await page.getByRole('menuitem', { name: label, exact: true }).click()
     await page.keyboard.press('Escape')
 
-    await expect.poll(() => process.count(), { timeout: 10_000 }).toBe(0)
-    await tool.waitFor({ state: 'visible', timeout: 10_000 })
-    await expect.poll(async () => readFile(join(scaffold!.harnessHome, 'settings.yaml'), 'utf8'), { timeout: 5_000 })
-      .toMatch(/ui-chat:\n\s+transcriptView: normal/)
+    expect(await process.count()).toBe(1)
+    expect(await process.getAttribute('aria-expanded')).toBe('false')
+    expect(await tool.isVisible()).toBe(false)
+    await expect.poll(async () => readFile(join(scaffold!.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml'), 'utf8'), { timeout: 5_000 })
+      .toContain(`transcriptView: ${mode}`)
 
-    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await process.click()
+    const group = page.locator('[data-sample="bash"]').first().locator('xpath=ancestor::*[@data-chat-group-key]')
+    const groupControl = group.locator('[data-process-activity]')
+    expect(await groupControl.isVisible()).toBe(true)
+    expect(await groupControl.getAttribute('aria-expanded')).toBe('false')
+    expect(await tool.isVisible()).toBe(false)
+    await groupControl.click()
+    expect(await tool.isVisible()).toBe(true)
+    await process.click()
+
+    await openSettings(page, 'en')
     const restored = page.getByRole('dialog', { name: 'Settings' })
-    await restored.getByRole('button', { name: 'Normal', exact: true }).click()
+    await restored.getByText('Work details', { exact: true }).locator('../..')
+      .getByRole('button', { name: label, exact: true }).click()
     await page.getByRole('menuitem', { name: 'Compact', exact: true }).click()
     await page.keyboard.press('Escape')
     await process.waitFor({ timeout: 10_000 })
@@ -272,6 +297,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-turn-tail-actions-focused'))
     const { settled } = await sendPrompt()
     const tool = page.getByRole('button', { name: 'Bash Print alpha to stdout' })
+    await expandOwningTurnProcess(page, page.locator('[data-sample="bash"]').first())
     await tool.waitFor({ timeout: 30_000 })
     await tool.focus()
     expect(await tool.evaluate(element => element.ownerDocument.activeElement === element)).toBe(true)
@@ -291,7 +317,7 @@ describe('web e2e: assistant IconActions wait for the turn to end', () => {
     await assertFixtureInventory(
       SNAPSHOT_DIR,
       [
-        'completed.expected.md', 'focused.expected.md', 'running.expected.md', 'session.v2.jsonl',
+        'completed.expected.md', 'focused.expected.md', 'running.expected.md', 'session.v3.jsonl',
         'settled.expected.md', 'usage-expanded.expected.md',
       ],
     )
