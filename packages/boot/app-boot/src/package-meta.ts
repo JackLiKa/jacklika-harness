@@ -58,8 +58,12 @@ export function resolvePluginResource(specifier: string, parentURL: string): str
 
 function missingResource(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
-  return code === 'ERR_PACKAGE_PATH_NOT_EXPORTED' || code === 'ERR_MODULE_NOT_FOUND'
-    || code === 'MODULE_NOT_FOUND' || code === 'ENOENT' || code === 'ENOTDIR'
+  if (code === 'ERR_PACKAGE_PATH_NOT_EXPORTED' || code === 'ERR_MODULE_NOT_FOUND'
+    || code === 'MODULE_NOT_FOUND' || code === 'ENOENT' || code === 'ENOTDIR') {
+    return true
+  }
+  const message = (error as Error | null)?.message ?? ''
+  return message.includes('Package subpath') && message.includes('is not defined by "exports"')
 }
 
 function optionalResourcePath(specifier: string, parentURL: string): string | undefined {
