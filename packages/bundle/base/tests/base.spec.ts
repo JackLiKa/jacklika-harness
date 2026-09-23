@@ -70,7 +70,7 @@ describe('dsh-base bundle', () => {
     expect(modelExpr).toBeDefined()
     expect(evaluate({ process: { env: {} } }, providerExpr!)).toBe('deepseek-official')
     expect(evaluate({ process: { env: { DSH_DEFAULT_PROVIDER: 'openai' } } }, providerExpr!)).toBe('openai')
-    expect(evaluate({ process: { env: {} } }, modelExpr!)).toBe('deepseek-v4-flash')
+    expect(evaluate({ process: { env: {} } }, modelExpr!)).toBe('deepseek-flash')
     expect(evaluate({ process: { env: { DSH_DEFAULT_MODEL: 'gpt-4o-mini' } } }, modelExpr!)).toBe('gpt-4o-mini')
   })
 
