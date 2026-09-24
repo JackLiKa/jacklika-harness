@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-09-04-opt-in-filesystem-memory-tool.md
-2026-09-04-opt-in-filesystem-memory-tool.md: 2a41d1b5e03bf004586e56ccf4039e9333bf1164
-2026-09-04-opt-in-filesystem-memory-tool.zh.md: 0da0582edfc8c81506582800f2963cc03900ff60
+2026-09-04-opt-in-filesystem-memory-tool.md: 218a2b34ac04883b406bf031eb3a97d297465c17
+2026-09-04-opt-in-filesystem-memory-tool.zh.md: a4df4d45173d4854de2a6073ea9b8fe299fa54aa

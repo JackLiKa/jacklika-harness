@@ -403,6 +403,7 @@
       "@deepseek-ai/dsh-lsp-stdio": ["./packages/lsp/lsp-stdio/src"],
       "@deepseek-ai/dsh-mcp-client": ["./packages/mcp/mcp-client/src"],
       "@deepseek-ai/dsh-mcp-resources": ["./packages/mcp/mcp-resources/src"],
+      "@deepseek-ai/dsh-memory": ["./packages/bundle/memory/src"],
       "@deepseek-ai/dsh-memory-git": ["./packages/fs/memory-git/src"],
       "@deepseek-ai/dsh-memory-queue": ["./packages/fs/memory-queue/src"],
       "@deepseek-ai/dsh-memory-scope": ["./packages/fs/memory-scope/src"],

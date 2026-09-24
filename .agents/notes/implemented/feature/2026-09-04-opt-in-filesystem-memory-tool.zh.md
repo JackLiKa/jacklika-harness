@@ -41,6 +41,7 @@ dsh 已有丰富的事件溯源会话记忆，但缺少用户可长期拥有的�
 - `@deepseek-ai/dsh-memory-queue` —— 通过 `tools/execute` waterfall 把 `wiki_write`（可配置）调用串行化，提供单写者顺序；可选的 `crossProcessLock` 在仓库根持有 `mkdir` 锁目录，其活性由等待方本地时钟上的变化检测证明（有 `heartbeat` 文件时看计数器，没有时看目录 mtime），使不同 dsh 进程无法交错写入，慢速写入不会被误回收，跨机器时钟偏差也无法伪造过期。`wiki_write` 通过临时文件 + `rename` 原子发布；`wiki_read` 返回 `version` 指纹，`wiki_write` 接受可选 `baseVersion`，在读取后被非协调写入方改动时显式报冲突。
 - `@deepseek-ai/dsh-memory-git` —— 通过 `tools/execute` waterfall 把每次成功的 `wiki_write`（可配置，默认 `shared/` 前缀）提交为 vault git 仓库的 commit，提供版本历史、回滚与审计；挂载在 queue 之后时提交落在仓库锁内。`nestedRepo`（默认 `init`）让 vault 拥有自己的 `.git`，使工作区内的 vault 不会把提交混入外层项目仓库；`inherit` 并入最近外层仓库，`own` 要求 `<vault>/.git` 已存在。
 - `@deepseek-ai/dsh-tool-memory-vector` —— `wiki_semantic_search` 通过可配置的 OpenAI 兼容端点取 embedding，按余弦相似度排序，向量按 mtime 缓存在仓库内 `.vector-index.json`。
+- `@deepseek-ai/dsh-memory` —— profile bundle，其 `cordis.patch.yml` 按 waterfall 顺序挂载整条链（scope → queue → git → filesystem → graph，无端点时 vector 禁用）。自带的 `memory` profile 模板组合 `dsh-base` + 本 bundle + `dsh-headless`，因此 `dsh --profile memory "<task>"` 即得到启用记忆的一次性 CLI 会话；任何自定义 profile 也可以把本 bundle 列在 `dsh-base` 之后。
 
 `indexHiddenDirs` 配置项（默认 `false`）让 `vaultRoot` 指向工作区根的部署也能索引 `.dsh/memory/` 中的笔记，同时 `.git`/`node_modules` 始终排除。
 

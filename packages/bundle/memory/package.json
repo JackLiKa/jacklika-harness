@@ -1,0 +1,52 @@
+{
+  "name": "@deepseek-ai/dsh-memory",
+  "description": "The dsh memory bundle: an Obsidian-compatible Markdown vault with per-agent write namespaces, serialized writes, and git history as a patch layer over dsh-base",
+  "version": "0.1.7-alpha.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "directory": "packages/bundle/memory"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "cordis.patch.yml",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-memory-git": "workspace:*",
+    "@deepseek-ai/dsh-memory-queue": "workspace:*",
+    "@deepseek-ai/dsh-memory-scope": "workspace:*",
+    "@deepseek-ai/dsh-tool-memory-filesystem": "workspace:*",
+    "@deepseek-ai/dsh-tool-memory-graph": "workspace:*",
+    "@deepseek-ai/dsh-tool-memory-vector": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~"
+  }
+}
