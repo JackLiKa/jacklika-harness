@@ -1179,6 +1179,10 @@ Create a new note or append to an existing note in the wiki vault. The path is r
         "append",
         "overwrite"
       ]
+    },
+    "baseVersion": {
+      "type": "string",
+      "description": "Optional version returned by wiki_read. When provided, the write fails if the note changed since that read."
     }
   },
   "required": [

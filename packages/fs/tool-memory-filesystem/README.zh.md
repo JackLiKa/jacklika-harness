@@ -52,9 +52,9 @@ kind: "package-reference"
 
 ### 工具
 
-- `wiki_read(id)` — 按仓库相对路径读取笔记，返回 frontmatter、正文、链接和已解析的链接笔记。
+- `wiki_read(id)` — 按仓库相对路径读取笔记，返回 frontmatter、正文、链接、已解析的链接笔记，以及内容指纹 `version`。
 - `wiki_search(query)` — 按标题、id、正文关键词搜索；结果包含反向链接数量。
-- `wiki_write(id, content, mode?)` — 创建或追加笔记。追加模式保留 frontmatter 并添加时间戳标题。
+- `wiki_write(id, content, mode?, baseVersion?)` — 创建或追加笔记。追加模式保留 frontmatter 并添加时间戳标题。把 `wiki_read` 返回的 `version` 作为 `baseVersion` 传入时，若笔记在读取后被其他写入方改动，写入会显式失败。
 
 ### 安全
 
@@ -111,7 +111,7 @@ Create a new note or append to an existing note in the wiki vault. The path is r
 - **未接入沙箱策略** — 插件直接读取文件，绕过 `ctx.fs` 沙箱与审批机制。未来可以提供委托给 `ctx.fs` 的 provider 以继承策略。
 - **无向量搜索** — 仅支持关键词搜索。未来可新增 `tool-memory-vector` 包提供基于 embedding 的检索，而无需修改本包。
 - **不支持图片或二进制附件** — 笔记按 UTF-8 文本处理。附件应继续使用 attachment 体系。
-- **无内置写协调** —— 写入是原子的（临时文件 + `rename`），读者不会看到半写文件，但对同一笔记的并发 `wiki_write` 仍可能丢更新。挂载 `@deepseek-ai/dsh-memory-queue` 可获得进程内串行化，并可选用心跳刷新的跨进程锁。
+- **无内置写协调** —— 写入是原子的（临时文件 + `rename`），读者不会看到半写文件，但对同一笔记的并发 `wiki_write` 仍可能丢更新。协作调用方可传 `baseVersion` 把丢更新变成显式冲突；挂载 `@deepseek-ai/dsh-memory-queue` 可获得进程内串行化，并可选用心跳刷新的跨进程锁。
 
 <a id="dev-note"></a>
 ### 开发备注

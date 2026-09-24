@@ -8,7 +8,7 @@
  * @module @deepseek-ai/dsh-tool-memory-filesystem
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { readdir, readFile, rename, rm, stat, writeFile, mkdir } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
@@ -123,6 +123,16 @@ export function splitFrontmatter(text: string): { frontmatter: Record<string, un
 }
 
 /**
+ * Fingerprint one note's raw file contents. The value lets `wiki_write`
+ * detect that another writer changed the note since it was read.
+ * @param text - raw file contents.
+ * @returns content hash stable across processes.
+ */
+export function noteVersion(text: string): string {
+  return createHash('sha1').update(text, 'utf8').digest('hex')
+}
+
+/**
  * Find all Obsidian-style `[[link]]` references in note text. Aliases of the
  * form `[[link|alias]]` return the link target only.
  * @param text - note body.
@@ -215,6 +225,7 @@ export interface LinkedNote {
   frontmatter: Record<string, unknown>
   body: string
   links: string[]
+  version: string
   linkedNotes: LinkedNote[]
 }
 
@@ -241,6 +252,7 @@ export async function readNote(
       frontmatter: {},
       body: '',
       links: [],
+      version: '',
       linkedNotes: [],
     }
   }
@@ -265,6 +277,7 @@ export async function readNote(
     frontmatter,
     body,
     links,
+    version: noteVersion(text),
     linkedNotes,
   }
 }
@@ -293,6 +306,7 @@ export async function buildIndex(
       frontmatter,
       body,
       links: extractLinks(text),
+      version: noteVersion(text),
     })
   }
   const index = new Map<string, SearchResult>()
@@ -440,6 +454,10 @@ export function apply(ctx: Context, config: Config): void {
         description: 'Either "append" (default) or "overwrite".',
         enum: ['append', 'overwrite'],
       },
+      baseVersion: {
+        type: 'string',
+        description: 'Optional version returned by wiki_read. When provided, the write fails if the note changed since that read.',
+      },
     },
     output: {
       schema: {
@@ -462,17 +480,20 @@ export function apply(ctx: Context, config: Config): void {
         throw new Error(`tool-memory-filesystem: note id must end with one of ${resolved.extensions.join(', ')}`)
       }
       await mkdir(dirname(absolutePath), { recursive: true })
+      let existing: string | undefined
+      try {
+        existing = await readFile(absolutePath, 'utf8')
+      } catch {
+        // file does not exist yet
+      }
+      if (args.baseVersion !== undefined && noteVersion(existing ?? '') !== args.baseVersion) {
+        throw new Error(`tool-memory-filesystem: note ${args.id} changed since it was read; re-read it before writing`)
+      }
       let finalBody: string
       if (mode === 'overwrite') {
         finalBody = args.content
       } else {
-        let existing = ''
-        try {
-          existing = await readFile(absolutePath, 'utf8')
-        } catch {
-          // file does not exist yet
-        }
-        const { frontmatter, body } = splitFrontmatter(existing)
+        const { frontmatter, body } = splitFrontmatter(existing ?? '')
         const frontmatterText = Object.keys(frontmatter).length > 0
           ? `---\n${yaml.dump(frontmatter).trim()}\n---\n\n`
           : ''

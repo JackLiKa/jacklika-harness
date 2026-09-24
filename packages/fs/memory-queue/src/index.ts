@@ -76,10 +76,11 @@ const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
  * Acquire the vault's lock directory, waiting for foreign holders and
  * reclaiming locks whose heartbeat stopped. The holder writes an incrementing
  * counter to `<lock>/heartbeat` every `lockHeartbeatMs`; a waiter declares a
- * lock stale only when the value fails to change across `lockStaleMs` of its
- * own local clock, so cross-machine clock skew and mtime coherence never
- * affect liveness. Locks without a heartbeat file (foreign writers, older
- * versions) fall back to directory-mtime staleness.
+ * lock stale only when the observed liveness token fails to change across
+ * `lockStaleMs` of its own local clock, so cross-machine clock skew and mtime
+ * coherence never affect liveness. Locks without a heartbeat file (foreign
+ * writers, older versions) are observed through directory mtime changes under
+ * the same local-clock rule.
  * @param lockPath - absolute path of the lock directory.
  * @param resolved - applied plugin configuration.
  * @param signal - caller signal; an aborted caller fails instead of waiting.
@@ -92,7 +93,7 @@ async function acquireLock(
 ): Promise<() => Promise<void>> {
   const heartbeatPath = join(lockPath, 'heartbeat')
   const deadline = Date.now() + resolved.lockTimeoutMs
-  let lastBeat: string | undefined
+  let lastObserved: string | undefined
   let lastChangeAt = Date.now()
   for (;;) {
     signal.throwIfAborted()
@@ -116,22 +117,19 @@ async function acquireLock(
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      // Clock-free liveness: only this process's elapsed time is compared.
+      // Heartbeat content proves a live holder; mtime covers legacy locks.
       const beat = await readFile(heartbeatPath, 'utf8').catch(() => undefined)
-      if (beat !== undefined) {
-        // Clock-free liveness: only this process's elapsed time is compared.
-        if (beat !== lastBeat) {
-          lastBeat = beat
-          lastChangeAt = Date.now()
-        } else if (Date.now() - lastChangeAt > resolved.lockStaleMs) {
-          await rm(lockPath, { recursive: true, force: true })
-          continue
-        }
-      } else {
-        const info = await stat(lockPath).catch(() => undefined)
-        if (info !== undefined && Date.now() - info.mtimeMs > resolved.lockStaleMs) {
-          await rm(lockPath, { recursive: true, force: true })
-          continue
-        }
+      const info = beat === undefined
+        ? await stat(lockPath).catch(() => undefined)
+        : undefined
+      const observed = `${beat ?? ''}|${info?.mtimeMs ?? ''}`
+      if (observed !== lastObserved) {
+        lastObserved = observed
+        lastChangeAt = Date.now()
+      } else if (Date.now() - lastChangeAt > resolved.lockStaleMs) {
+        await rm(lockPath, { recursive: true, force: true })
+        continue
       }
       if (Date.now() >= deadline) {
         throw new Error(`memory-queue: timed out waiting for vault lock ${lockPath}`)

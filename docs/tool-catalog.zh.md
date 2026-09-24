@@ -1185,6 +1185,10 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
         "append",
         "overwrite"
       ]
+    },
+    "baseVersion": {
+      "type": "string",
+      "description": "Optional version returned by wiki_read. When provided, the write fails if the note changed since that read."
     }
   },
   "required": [

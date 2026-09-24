@@ -131,15 +131,16 @@ describe('memory-queue real Loader composition through cordis.yml', () => {
     const ctx = await boot([
       '    crossProcessLock: true',
       `    vaultRoot: ${vault}`,
-      '    lockStaleMs: 500',
+      '    lockStaleMs: 300',
       '    lockHeartbeatMs: 100',
-      '    lockTimeoutMs: 200',
-      '    lockRetryMs: 20',
+      '    lockTimeoutMs: 1200',
+      '    lockRetryMs: 50',
     ])
     const intervals: Interval[] = []
     registerSlowTool(ctx, intervals)
 
-    // A lock left by a dead process: older than lockStaleMs, so it is reclaimed.
+    // A lock left by a dead process: its liveness token never changes, so it
+    // is reclaimed after lockStaleMs of local observation.
     const lockPath = join(vault, '.memory-queue.lock')
     await mkdir(lockPath)
     const old = new Date(Date.now() - 60000)
@@ -147,11 +148,22 @@ describe('memory-queue real Loader composition through cordis.yml', () => {
     const reclaimed = await call(ctx, 'reclaim')
     expect(reclaimed.isError).toBe(false)
 
-    // A lock held by a live foreign process: fresh mtime, never released.
+    // A legacy holder without a heartbeat file stays alive by refreshing the
+    // directory mtime; liveness is change-detection on our local clock, never
+    // an absolute-time comparison, so it survives past lockStaleMs.
     await mkdir(lockPath)
-    const blocked = await call(ctx, 'blocked')
-    expect(blocked.isError).toBe(true)
-    await rm(lockPath, { recursive: true, force: true })
+    const refresh = setInterval(() => {
+      const now = new Date()
+      void utimes(lockPath, now, now).catch(() => undefined)
+    }, 100)
+    try {
+      const blocked = await call(ctx, 'blocked')
+      expect(blocked.isError).toBe(true)
+      await expect(stat(lockPath)).resolves.toBeDefined()
+    } finally {
+      clearInterval(refresh)
+      await rm(lockPath, { recursive: true, force: true })
+    }
   })
 
   it('does not reclaim a lock whose heartbeat counter keeps advancing', async () => {

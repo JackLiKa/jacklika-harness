@@ -150,6 +150,52 @@ describe('tool-memory-filesystem real Loader composition through cordis.yml', ()
     expect(note.frontmatter.tags).toEqual(['llm', 'architecture'])
   })
 
+  it('fails wiki_write with a stale baseVersion instead of silently overwriting', async () => {
+    const vault = await makeVault()
+    const ctx = await boot(vault)
+
+    const readResult = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: ToolCallId('read-for-version'),
+      name: 'wiki_read',
+      arguments: { id: 'concepts/RAG.md' },
+    })
+    expect(readResult.isError).toBe(false)
+    if (readResult.isError) throw new Error('expected wiki_read success')
+    const note = JSON.parse(resultText(readResult)) as { version: string }
+    expect(note.version).toMatch(/^[0-9a-f]{40}$/)
+
+    // An uncoordinated writer changes the note between read and write.
+    await writeFile(join(vault, 'concepts', 'RAG.md'), 'changed externally\n')
+
+    const conflict = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: ToolCallId('write-stale-version'),
+      name: 'wiki_write',
+      arguments: { id: 'concepts/RAG.md', content: 'x', baseVersion: note.version },
+    })
+    expect(conflict.isError).toBe(true)
+
+    // Re-reading yields the new version; a write against it succeeds.
+    const reread = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: ToolCallId('reread-after-conflict'),
+      name: 'wiki_read',
+      arguments: { id: 'concepts/RAG.md' },
+    })
+    expect(reread.isError).toBe(false)
+    if (reread.isError) throw new Error('expected wiki_read success')
+    const current = JSON.parse(resultText(reread)) as { version: string }
+
+    const matching = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: ToolCallId('write-matching-version'),
+      name: 'wiki_write',
+      arguments: { id: 'concepts/RAG.md', content: 'after external change', baseVersion: current.version },
+    })
+    expect(matching.isError).toBe(false)
+  })
+
   it('rejects paths outside the vault root', async () => {
     const vault = await makeVault()
     const ctx = await boot(vault)

@@ -15,6 +15,12 @@ export interface Note {
   body: string
   /** Obsidian-style `[[target]]` links found in the body. */
   links: string[]
+  /**
+   * Content fingerprint of the raw file at read time. Pass it back as
+   * `baseVersion` in `wiki_write` to fail when another writer changed the
+   * note in between.
+   */
+  version: string
 }
 
 /** Result of a search across the vault. */

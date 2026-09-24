@@ -52,9 +52,9 @@ A relative `vaultRoot` resolves against the calling session's workspace.
 
 ### Tools
 
-- `wiki_read(id)` — read one note by vault-relative path and return its frontmatter, body, links, and linked notes.
+- `wiki_read(id)` — read one note by vault-relative path and return its frontmatter, body, links, linked notes, and a `version` content fingerprint.
 - `wiki_search(query)` — keyword search across note titles, ids, and bodies; results include backlink counts.
-- `wiki_write(id, content, mode?)` — create or append to a note. Append mode preserves frontmatter and adds a timestamp header.
+- `wiki_write(id, content, mode?, baseVersion?)` — create or append to a note. Append mode preserves frontmatter and adds a timestamp header. Passing a `version` from `wiki_read` as `baseVersion` makes the write fail loudly when another writer changed the note in between.
 
 ### Security
 
@@ -111,7 +111,7 @@ Independent. The plugin only supplies tool results; it does not change the reque
 - **No sandbox policy integration** — the plugin reads files directly, so it bypasses the `ctx.fs` sandbox and approval gates. A future provider could delegate reads to `ctx.fs` to inherit policy.
 - **No vector search** — search is keyword-only. A separate `tool-memory-vector` package could add embedding-based retrieval without changing this package.
 - **No embedded image or binary support** — notes are treated as UTF-8 text. Attachments should remain in the attachment seam.
-- **No built-in write coordination** — writes are atomic (temp file + `rename`), so readers never see partial files, but simultaneous `wiki_write` calls to the same note can still lose updates. Mount `@deepseek-ai/dsh-memory-queue` for in-process serialization, optionally with a heartbeat-refreshed cross-process lock.
+- **No built-in write coordination** — writes are atomic (temp file + `rename`), so readers never see partial files, but simultaneous `wiki_write` calls to the same note can still lose updates. Cooperative callers can pass `baseVersion` to turn a lost update into a loud conflict; mount `@deepseek-ai/dsh-memory-queue` for in-process serialization, optionally with a heartbeat-refreshed cross-process lock.
 
 <a id="dev-note"></a>
 ### Dev Note
