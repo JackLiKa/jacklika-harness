@@ -153,6 +153,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/fs/fs': { kind: 'indirect', reason: 'The service interface delegates model rendering to dsh-tool-fs.' },
   'packages/fs/fs-local': { kind: 'indirect', reason: 'The provider backend delegates model rendering to dsh-tool-fs.' },
   'packages/fs/memory-queue': { kind: 'none', reason: 'The tools/execute wrapper only reorders tool dispatches; it registers no prompt, schema, or result of its own.' },
+  'packages/fs/memory-scope': { kind: 'indirect', reason: 'The wrapper reshapes the id argument and returned id of tools other packages own; it registers no schema, prompt, or result of its own.' },
   'packages/hooks/hook-protocol': { kind: 'indirect', reason: 'Only the hook bridge plugins render decoded hook output to a model.' },
   'packages/host/directory-picker': { kind: 'none', reason: 'The GUI-host picking seam registers nothing model-facing.' },
   'packages/host/directory-picker-auto': { kind: 'none', reason: 'The GUI-host picking chooser only mounts a backend row; it registers nothing model-facing.' },

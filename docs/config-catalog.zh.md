@@ -2050,6 +2050,42 @@ export interface Config {
 
 来源： [`packages/fs/memory-queue/src/index.ts:30`](../packages/fs/memory-queue/src/index.ts)
 
+<a id="deepseek-aidsh-memory-scope"></a>
+
+## `@deepseek-ai/dsh-memory-scope`
+
+Requires: `tools`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Tool names whose id argument is namespaced per calling agent. */
+  toolNames?: string[]
+  /** Argument carrying the vault-relative note id. */
+  idArgument?: string
+  /**
+   * Top-level vault directory holding every agent namespace. Must be a single
+   * path segment of letters, digits, `.`, `_`, or `-`.
+   */
+  scopePrefix?: string
+  /**
+   * Id prefixes that form the shared zone: matching ids are NOT rewritten, so
+   * they stay arbitrated by the queue lock or a curator agent.
+   */
+  sharedPrefixes?: string[]
+  /**
+   * `scoped` rewrites matching ids per calling agent; `curator` disables all
+   * rewriting for deployments meant to write the shared zone directly.
+   */
+  role?: ScopeRole
+}
+
+/** How the mounted deployment treats write ids. */
+export type ScopeRole = 'scoped' | 'curator'
+```
+
+来源： [`packages/fs/memory-scope/src/index.ts:27`](../packages/fs/memory-scope/src/index.ts)
+
 <a id="deepseek-aidsh-message-feedback"></a>
 
 ## `@deepseek-ai/dsh-message-feedback`

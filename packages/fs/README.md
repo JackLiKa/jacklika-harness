@@ -35,6 +35,7 @@ Seven packages play the filesystem roles; the subsystem reference owns the exhau
 | [`tool-memory-filesystem/`](tool-memory-filesystem/README.md) | Model-facing `wiki_read`, `wiki_search`, and `wiki_write` tools over a Markdown vault with frontmatter and Obsidian-style links | registers on `ctx.tools` |
 | [`tool-memory-graph/`](tool-memory-graph/README.md) | Model-facing `wiki_graph` tool returning the vault's `[[link]]` graph or a note-centered subgraph | registers on `ctx.tools` |
 | [`memory-queue/`](memory-queue/README.md) | Serializes selected tool dispatches (default `wiki_write`) through the `tools/execute` waterfall | `tools/execute` listener |
+| [`memory-scope/`](memory-scope/README.md) | Rewrites selected tool ids (default `wiki_write`) into per-agent namespaces through the `tools/execute` waterfall | `tools/execute` listener |
 | [`tool-memory-vector/`](tool-memory-vector/README.md) | Model-facing `wiki_semantic_search` tool ranking notes by embedding similarity through a configurable endpoint | registers on `ctx.tools` |
 | [`tool-str-replace-editor/`](tool-str-replace-editor/README.md) | Standalone `str_replace_editor` tool: `view`, `create`, `str_replace`, and `insert` over `ctx.fs` | registers on `ctx.tools` |
 

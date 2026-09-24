@@ -35,6 +35,7 @@ kind: "package-group"
 | [`tool-memory-filesystem/`](tool-memory-filesystem/README.zh.md) | 面向模型的 `wiki_read`、`wiki_search` 与 `wiki_write` 工具，支持 frontmatter 与 Obsidian 风格链接的 Markdown 仓库 | 注册到 `ctx.tools` |
 | [`tool-memory-graph/`](tool-memory-graph/README.zh.md) | 面向模型的 `wiki_graph` 工具，返回仓库的 `[[link]]` 链接图或以笔记为中心的子图 | 注册到 `ctx.tools` |
 | [`memory-queue/`](memory-queue/README.zh.md) | 通过 `tools/execute` waterfall 串行化指定工具调用（默认 `wiki_write`） | `tools/execute` 监听器 |
+| [`memory-scope/`](memory-scope/README.zh.md) | 通过 `tools/execute` waterfall 把指定工具调用的 id（默认 `wiki_write`）重写到按 agent 划分的命名空间 | `tools/execute` 监听器 |
 | [`tool-memory-vector/`](tool-memory-vector/README.zh.md) | 面向模型的 `wiki_semantic_search` 工具，通过可配置端点的 embedding 相似度排序笔记 | 注册到 `ctx.tools` |
 | [`tool-str-replace-editor/`](tool-str-replace-editor/README.zh.md) | 独立的 `str_replace_editor` 工具：基于 `ctx.fs` 的 `view`、`create`、`str_replace` 与 `insert` | 注册到 `ctx.tools` |
 

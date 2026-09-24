@@ -367,6 +367,7 @@
     { "path": "./packages/fs/tool-memory-filesystem" },
     { "path": "./packages/fs/tool-memory-graph" },
     { "path": "./packages/fs/memory-queue" },
+    { "path": "./packages/fs/memory-scope" },
     { "path": "./packages/fs/tool-memory-vector" },
     { "path": "./packages/fs/tool-str-replace-editor" },
     { "path": "./packages/compaction/compaction" },
