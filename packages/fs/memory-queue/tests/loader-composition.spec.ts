@@ -154,7 +154,7 @@ describe('memory-queue real Loader composition through cordis.yml', () => {
     await rm(lockPath, { recursive: true, force: true })
   })
 
-  it('does not reclaim a lock whose holder keeps the mtime fresh', async () => {
+  it('does not reclaim a lock whose heartbeat counter keeps advancing', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'dsh-queue-vault-'))
     const ctx = await boot([
       '    crossProcessLock: true',
@@ -167,13 +167,15 @@ describe('memory-queue real Loader composition through cordis.yml', () => {
     const intervals: Interval[] = []
     registerSlowTool(ctx, intervals)
 
-    // A foreign holder that refreshes its lock must survive past lockStaleMs:
-    // liveness is heartbeat-based, so a slow live write is never reclaimed.
+    // A foreign holder whose heartbeat counter advances must survive past
+    // lockStaleMs: liveness is change-detection on our local clock, not an
+    // mtime or absolute-time comparison.
     const lockPath = join(vault, '.memory-queue.lock')
     await mkdir(lockPath)
+    let counter = 0
     const refresh = setInterval(() => {
-      const now = new Date()
-      void utimes(lockPath, now, now).catch(() => undefined)
+      counter += 1
+      void writeFile(join(lockPath, 'heartbeat'), String(counter), 'utf8').catch(() => undefined)
     }, 100)
     try {
       const blocked = await call(ctx, 'still-held')

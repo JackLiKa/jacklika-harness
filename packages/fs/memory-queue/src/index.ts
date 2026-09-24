@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-memory-queue
  */
 
-import { mkdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -74,10 +74,12 @@ const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
 
 /**
  * Acquire the vault's lock directory, waiting for foreign holders and
- * reclaiming stale locks whose heartbeat stopped. The holder refreshes the
- * directory mtime every `lockHeartbeatMs`, so `lockStaleMs` only bounds
- * heartbeat loss — not dispatch duration — and a slow live write is never
- * reclaimed.
+ * reclaiming locks whose heartbeat stopped. The holder writes an incrementing
+ * counter to `<lock>/heartbeat` every `lockHeartbeatMs`; a waiter declares a
+ * lock stale only when the value fails to change across `lockStaleMs` of its
+ * own local clock, so cross-machine clock skew and mtime coherence never
+ * affect liveness. Locks without a heartbeat file (foreign writers, older
+ * versions) fall back to directory-mtime staleness.
  * @param lockPath - absolute path of the lock directory.
  * @param resolved - applied plugin configuration.
  * @param signal - caller signal; an aborted caller fails instead of waiting.
@@ -88,7 +90,10 @@ async function acquireLock(
   resolved: ResolvedConfig,
   signal: AbortSignal,
 ): Promise<() => Promise<void>> {
+  const heartbeatPath = join(lockPath, 'heartbeat')
   const deadline = Date.now() + resolved.lockTimeoutMs
+  let lastBeat: string | undefined
+  let lastChangeAt = Date.now()
   for (;;) {
     signal.throwIfAborted()
     try {
@@ -98,9 +103,11 @@ async function acquireLock(
         pid: process.pid,
         startedAt: new Date().toISOString(),
       }), 'utf8').catch(() => undefined)
+      let counter = 0
+      await writeFile(heartbeatPath, String(counter), 'utf8').catch(() => undefined)
       const heartbeat = setInterval(() => {
-        const now = new Date()
-        utimes(lockPath, now, now).catch(() => undefined)
+        counter += 1
+        writeFile(heartbeatPath, String(counter), 'utf8').catch(() => undefined)
       }, resolved.lockHeartbeatMs)
       heartbeat.unref()
       return async () => {
@@ -109,11 +116,22 @@ async function acquireLock(
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-      const info = await stat(lockPath).catch(() => undefined)
-      if (info !== undefined && Date.now() - info.mtimeMs > resolved.lockStaleMs) {
-        // The holder's heartbeat stopped; reclaim and retry.
-        await rm(lockPath, { recursive: true, force: true })
-        continue
+      const beat = await readFile(heartbeatPath, 'utf8').catch(() => undefined)
+      if (beat !== undefined) {
+        // Clock-free liveness: only this process's elapsed time is compared.
+        if (beat !== lastBeat) {
+          lastBeat = beat
+          lastChangeAt = Date.now()
+        } else if (Date.now() - lastChangeAt > resolved.lockStaleMs) {
+          await rm(lockPath, { recursive: true, force: true })
+          continue
+        }
+      } else {
+        const info = await stat(lockPath).catch(() => undefined)
+        if (info !== undefined && Date.now() - info.mtimeMs > resolved.lockStaleMs) {
+          await rm(lockPath, { recursive: true, force: true })
+          continue
+        }
       }
       if (Date.now() >= deadline) {
         throw new Error(`memory-queue: timed out waiting for vault lock ${lockPath}`)

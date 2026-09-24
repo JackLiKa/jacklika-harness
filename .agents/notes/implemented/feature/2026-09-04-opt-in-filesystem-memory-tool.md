@@ -37,7 +37,7 @@ Without `vaultRoot`, each tool call resolves the vault to `<session cwd>/.dsh/me
 Three opt-in packages extend the vault without modifying this plugin:
 
 - `@deepseek-ai/dsh-tool-memory-graph` — `wiki_graph` returns the vault's `[[link]]` node/edge graph or a note-centered subgraph, reusing this package's parsing helpers.
-- `@deepseek-ai/dsh-memory-queue` — serializes `wiki_write` (configurable) dispatches through the `tools/execute` waterfall for single-writer ordering; an optional `crossProcessLock` holds a heartbeat-refreshed `mkdir` lock directory in the vault root so separate dsh processes cannot interleave writes and slow writes are never reclaimed as stale. `wiki_write` publishes atomically via temp file + `rename`.
+- `@deepseek-ai/dsh-memory-queue` — serializes `wiki_write` (configurable) dispatches through the `tools/execute` waterfall for single-writer ordering; an optional `crossProcessLock` holds an `mkdir` lock directory in the vault root whose liveness is proven by a heartbeat counter file — clock-free change detection, so separate dsh processes cannot interleave writes, slow writes are never reclaimed, and cross-machine clock skew cannot fake staleness. `wiki_write` publishes atomically via temp file + `rename`.
 - `@deepseek-ai/dsh-tool-memory-vector` — `wiki_semantic_search` ranks notes by cosine similarity over embeddings from a configurable OpenAI-compatible endpoint, with a per-vault mtime-keyed `.vector-index.json` cache.
 
 An `indexHiddenDirs` config flag (default `false`) lets a deployment whose `vaultRoot` is the workspace root index `.dsh/memory/` notes while keeping `.git`/`node_modules` excluded.

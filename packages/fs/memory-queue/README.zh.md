@@ -48,7 +48,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 实现说明
 
-插件安装一个 `ctx.on('tools/execute', …)` waterfall 监听器。工具名在 `toolNames` 中的调用被追加到一条共享 promise 链；每个调用都在前一个串行调用结束后才执行 `next()`，因此单个调用失败不会卡住后续调用。未列出的工具直接 `next()` 透传。开启 `crossProcessLock` 时，串行区段用 `<vault>/.memory-queue.lock` 上的 `mkdir` 包裹 `next()`：`mkdir` 在 POSIX 文件系统上是原子操作，同一时刻只有一个进程持有锁。持有方写入一份诊断用的 `owner.json`，并每 `lockHeartbeatMs` 刷新一次目录 mtime——判活基于心跳：锁只在持有方死亡时过期，绝不因写入耗时长而被误回收；等待超过 `lockTimeoutMs` 的调用直接失败。
+插件安装一个 `ctx.on('tools/execute', …)` waterfall 监听器。工具名在 `toolNames` 中的调用被追加到一条共享 promise 链；每个调用都在前一个串行调用结束后才执行 `next()`，因此单个调用失败不会卡住后续调用。未列出的工具直接 `next()` 透传。开启 `crossProcessLock` 时，串行区段用 `<vault>/.memory-queue.lock` 上的 `mkdir` 包裹 `next()`：`mkdir` 在 POSIX 文件系统上是原子操作，同一时刻只有一个进程持有锁。持有方写入一份诊断用的 `owner.json`，并每 `lockHeartbeatMs` 向 `<lock>/heartbeat` 写入递增计数器。等待方只在自己的本地时钟上度量该值连续 `lockStaleMs` 未变化时才判定锁过期——判活是变化检测，不是绝对时间或 mtime 比较，因此跨机器时钟偏差和弱 NFS mtime 一致性都不会让活锁显得过期。没有 `heartbeat` 文件的锁目录（外部写入方、旧版本插件）回退到目录 mtime 判活。等待超过 `lockTimeoutMs` 的调用直接失败。
 
 -----
 
@@ -67,7 +67,7 @@ kind: "package-reference"
 
 - **锁是咨询性的** —— `crossProcessLock` 只约束挂载了本插件的进程；瀑布链之外的写入方（其他工具、shell 命令）仍可能与仓库竞态。
 - **所有列出工具共用一条链** —— 不同配置工具之间也互相串行；按工具或按笔记分通道的能力留待后续。
-- **NFS 时钟偏差** —— 心跳判活依赖目录 mtime；mtime 一致性弱的文件系统上，死亡持有方的锁可能残留最多 `lockStaleMs`，严重时钟偏差也可能让活锁显得过期。
+- **回退路径仍依赖 mtime** —— 心跳判活本身与机器时钟无关，但没有 `heartbeat` 文件的锁目录（手工创建或旧版本插件）仍按目录 mtime 判活，弱一致性文件系统可能产生偏差。
 
 <a id="dev-note"></a>
 ### 开发备注

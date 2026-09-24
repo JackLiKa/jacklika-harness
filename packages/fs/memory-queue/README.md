@@ -48,7 +48,7 @@ Mount alongside the memory filesystem plugin:
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The plugin installs one `ctx.on('tools/execute', …)` waterfall listener. Dispatches whose tool name is in `toolNames` are appended to a single promise chain; each call runs `next()` only after the previous serialized call settles, so failure of one call cannot stall later ones. Unlisted tools pass straight through to `next()`. With `crossProcessLock`, the serialized section wraps `next()` in an `mkdir` lock at `<vault>/.memory-queue.lock`: `mkdir` is atomic on POSIX filesystems, so exactly one process holds the lock. The holder writes a diagnostic `owner.json` and refreshes the directory mtime every `lockHeartbeatMs`, so liveness is heartbeat-based: a lock goes stale only when its holder died, never because a write ran long. A caller waiting past `lockTimeoutMs` fails the dispatch loudly.
+The plugin installs one `ctx.on('tools/execute', …)` waterfall listener. Dispatches whose tool name is in `toolNames` are appended to a single promise chain; each call runs `next()` only after the previous serialized call settles, so failure of one call cannot stall later ones. Unlisted tools pass straight through to `next()`. With `crossProcessLock`, the serialized section wraps `next()` in an `mkdir` lock at `<vault>/.memory-queue.lock`: `mkdir` is atomic on POSIX filesystems, so exactly one process holds the lock. The holder writes a diagnostic `owner.json` and an incrementing counter to `<lock>/heartbeat` every `lockHeartbeatMs`. A waiter declares the lock stale only when that value fails to change for `lockStaleMs` measured on its own local clock — liveness is change-detection, not an absolute-time or mtime comparison, so cross-machine clock skew and weak NFS mtime coherence cannot make a live lock look stale. Locks without a heartbeat file (foreign writers, older versions) fall back to directory-mtime staleness. A caller waiting past `lockTimeoutMs` fails the dispatch loudly.
 
 -----
 
@@ -67,7 +67,7 @@ The wrapper does not change the request header, system prompt, or tool list.
 
 - **Lock is advisory** — `crossProcessLock` only guards processes that mount this plugin; a writer outside the waterfall (another tool, a shell command) can still race the vault.
 - **One chain for all listed tools** — calls to different configured tools serialize against each other; per-tool or per-note lanes are deferred.
-- **NFS clock skew** — heartbeat liveness trusts directory mtimes; on filesystems with weak mtime coherence a dead holder's lock can linger up to `lockStaleMs`, and a badly skewed clock can make a live lock look stale.
+- **Fallback path still trusts mtimes** — heartbeat liveness is clock-free, but a lock directory created without a `heartbeat` file (hand-made, or an older plugin version) is judged by directory mtime, which weak filesystems can skew.
 
 <a id="dev-note"></a>
 ### Dev Note
