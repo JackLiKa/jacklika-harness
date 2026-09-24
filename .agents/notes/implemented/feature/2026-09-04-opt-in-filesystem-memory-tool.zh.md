@@ -37,7 +37,7 @@ dsh 已有丰富的事件溯源会话记忆，但缺少用户可长期拥有的�
 三个可选包在不修改本插件的前提下扩展仓库能力：
 
 - `@deepseek-ai/dsh-tool-memory-graph` —— `wiki_graph` 返回仓库的 `[[link]]` 节点/边图或以某笔记为中心的子图，复用本包的解析辅助函数。
-- `@deepseek-ai/dsh-memory-queue` —— 通过 `tools/execute` waterfall 把 `wiki_write`（可配置）调用串行化，提供单写者顺序。
+- `@deepseek-ai/dsh-memory-queue` —— 通过 `tools/execute` waterfall 把 `wiki_write`（可配置）调用串行化，提供单写者顺序；可选的 `crossProcessLock` 在仓库根持有 `mkdir` 锁目录，使不同 dsh 进程也无法交错写入。
 - `@deepseek-ai/dsh-tool-memory-vector` —— `wiki_semantic_search` 通过可配置的 OpenAI 兼容端点取 embedding，按余弦相似度排序，向量按 mtime 缓存在仓库内 `.vector-index.json`。
 
 `indexHiddenDirs` 配置项（默认 `false`）让 `vaultRoot` 指向工作区根的部署也能索引 `.dsh/memory/` 中的笔记，同时 `.git`/`node_modules` 始终排除。

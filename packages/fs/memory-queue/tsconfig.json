@@ -28,6 +28,9 @@
     },
     {
       "path": "../../llm/llm"
+    },
+    {
+      "path": "../tool-memory-filesystem"
     }
   ]
 }

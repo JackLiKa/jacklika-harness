@@ -111,7 +111,7 @@ Create a new note or append to an existing note in the wiki vault. The path is r
 - **未接入沙箱策略** — 插件直接读取文件，绕过 `ctx.fs` 沙箱与审批机制。未来可以提供委托给 `ctx.fs` 的 provider 以继承策略。
 - **无向量搜索** — 仅支持关键词搜索。未来可新增 `tool-memory-vector` 包提供基于 embedding 的检索，而无需修改本包。
 - **不支持图片或二进制附件** — 笔记按 UTF-8 文本处理。附件应继续使用 attachment 体系。
-- **无并发写协调** — 对同一笔记的并发 `wiki_write` 可能产生竞态。MVP 定位为单 agent、单进程使用。
+- **无内置写协调** —— 对同一笔记的并发 `wiki_write` 可能产生竞态。挂载 `@deepseek-ai/dsh-memory-queue` 可获得进程内串行化，并可选用跨进程锁目录。
 
 <a id="dev-note"></a>
 ### 开发备注

@@ -111,7 +111,7 @@ Independent. The plugin only supplies tool results; it does not change the reque
 - **No sandbox policy integration** — the plugin reads files directly, so it bypasses the `ctx.fs` sandbox and approval gates. A future provider could delegate reads to `ctx.fs` to inherit policy.
 - **No vector search** — search is keyword-only. A separate `tool-memory-vector` package could add embedding-based retrieval without changing this package.
 - **No embedded image or binary support** — notes are treated as UTF-8 text. Attachments should remain in the attachment seam.
-- **No concurrent-write coordination** — simultaneous `wiki_write` calls to the same note can race. The tool is intended for single-agent, single-process use in this MVP.
+- **No built-in write coordination** — simultaneous `wiki_write` calls to the same note can race. Mount `@deepseek-ai/dsh-memory-queue` for in-process serialization, optionally with a cross-process lock directory.
 
 <a id="dev-note"></a>
 ### Dev Note

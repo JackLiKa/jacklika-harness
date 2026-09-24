@@ -27,7 +27,8 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@deepseek-ai/schemastery": "workspace:^",
+    "@deepseek-ai/dsh-tool-memory-filesystem": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-llm": "workspace:^",
@@ -43,6 +44,7 @@
     "@deepseek-ai/dsh-llm": "workspace:^",
     "@deepseek-ai/dsh-session": "workspace:^",
     "@deepseek-ai/dsh-system-prompt": "workspace:^",
+    "@deepseek-ai/dsh-tool-memory-filesystem": "workspace:^",
     "@deepseek-ai/dsh-tools": "workspace:^"
   }
 }

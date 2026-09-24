@@ -2018,10 +2018,27 @@ Requires: `tools`
 export interface Config {
   /** Tool names whose dispatches run one-at-a-time in registration order. */
   toolNames?: string[]
+  /**
+   * Vault root that hosts the lock directory. Resolved per call with the same
+   * rules as the memory tools: empty selects `<session cwd>/.dsh/memory/`, a
+   * relative path anchors at the session workspace.
+   */
+  vaultRoot?: string
+  /**
+   * Acquire a lock directory in the vault root around each serialized
+   * dispatch so separate processes cannot interleave matching tool calls.
+   */
+  crossProcessLock?: boolean
+  /** A lock directory untouched for this long counts as abandoned and is reclaimed. */
+  lockStaleMs?: number
+  /** Give up waiting for a held lock after this many milliseconds. */
+  lockTimeoutMs?: number
+  /** Delay between lock acquisition attempts. */
+  lockRetryMs?: number
 }
 ```
 
-Source: [`packages/fs/memory-queue/src/index.ts:20`](../packages/fs/memory-queue/src/index.ts)
+Source: [`packages/fs/memory-queue/src/index.ts:29`](../packages/fs/memory-queue/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
