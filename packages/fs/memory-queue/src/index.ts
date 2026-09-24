@@ -9,8 +9,9 @@
  * @module @deepseek-ai/dsh-memory-queue
  */
 
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
@@ -40,6 +41,12 @@ export interface Config {
    * dispatch so separate processes cannot interleave matching tool calls.
    */
   crossProcessLock?: boolean
+  /**
+   * Name of a string tool argument whose value scopes a private serialization
+   * lane and lock directory (for example `id` on `wiki_write` so writes to
+   * different notes run in parallel). Empty string keeps one global lane.
+   */
+  laneArgument?: string
   /** A lock directory unrefreshed for this long counts as abandoned and is reclaimed. */
   lockStaleMs?: number
   /** Interval at which the holder refreshes the lock directory mtime. */
@@ -55,6 +62,7 @@ export const Config: z<Config> = z.object({
   toolNames: z.array(z.string()).default(['wiki_write']),
   vaultRoot: z.string().default(''),
   crossProcessLock: z.boolean().default(false),
+  laneArgument: z.string().default(''),
   lockStaleMs: z.number().default(15000),
   lockHeartbeatMs: z.number().default(2000),
   lockTimeoutMs: z.number().default(30000),
@@ -144,7 +152,10 @@ async function acquireLock(
  * whose name appears in `toolNames`. Non-matching calls pass straight through.
  * Queued calls respect the caller signal while waiting: an aborted caller
  * never dispatches. With `crossProcessLock`, the serialized section also
- * holds the vault lock directory so other processes cannot interleave.
+ * holds a vault lock directory so other processes cannot interleave. When
+ * `laneArgument` names a string argument, calls carrying different values get
+ * independent lanes and lock directories (`<vault>/.memory-queue.lanes/<hash>`)
+ * while calls sharing a value still serialize.
  * @param ctx - registrant context carrying the tool registry events.
  * @param config - deployment's explicit queue configuration.
  */
@@ -161,18 +172,33 @@ export function apply(ctx: Context, config: Config): void {
     throw new Error('memory-queue: lockStaleMs must exceed twice lockHeartbeatMs so one missed heartbeat is not fatal')
   }
   const names = new Set(resolved.toolNames)
-  let tail: Promise<void> = Promise.resolve()
+  const lanes = new Map<string, Promise<void>>()
+
+  const laneKey = (exec: { arguments: unknown }): string => {
+    if (resolved.laneArgument === '' || exec.arguments === null || typeof exec.arguments !== 'object') {
+      return ''
+    }
+    const value = (exec.arguments as Record<string, unknown>)[resolved.laneArgument]
+    return typeof value === 'string' ? value : ''
+  }
+  const lockPathFor = (vault: string, key: string): string => key === ''
+    ? join(vault, LOCK_DIR)
+    : join(vault, `${LOCK_DIR}.lanes`, `${createHash('sha1').update(key).digest('hex')}.lock`)
 
   ctx.on('tools/execute', async (exec, next): Promise<ToolExecutionResult> => {
     if (!names.has(exec.name)) return next()
-    const previous = tail
+    const key = laneKey(exec)
+    const previous = lanes.get(key) ?? Promise.resolve()
     let release = (): void => undefined
-    tail = new Promise<void>((resolve) => { release = resolve })
+    const current = new Promise<void>((resolve) => { release = resolve })
+    const chained = previous.then(() => current)
+    lanes.set(key, chained)
     await previous
     exec.signal.throwIfAborted()
     try {
       if (!resolved.crossProcessLock) return await next()
-      const lockPath = join(resolveMemoryVaultRoot(resolved.vaultRoot, exec), LOCK_DIR)
+      const lockPath = lockPathFor(resolveMemoryVaultRoot(resolved.vaultRoot, exec), key)
+      await mkdir(dirname(lockPath), { recursive: true })
       const unlock = await acquireLock(lockPath, resolved, exec.signal)
       try {
         return await next()
@@ -181,6 +207,7 @@ export function apply(ctx: Context, config: Config): void {
       }
     } finally {
       release()
+      if (lanes.get(key) === chained) lanes.delete(key)
     }
   })
 }

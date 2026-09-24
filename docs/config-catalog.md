@@ -2029,6 +2029,12 @@ export interface Config {
    * dispatch so separate processes cannot interleave matching tool calls.
    */
   crossProcessLock?: boolean
+  /**
+   * Name of a string tool argument whose value scopes a private serialization
+   * lane and lock directory (for example `id` on `wiki_write` so writes to
+   * different notes run in parallel). Empty string keeps one global lane.
+   */
+  laneArgument?: string
   /** A lock directory unrefreshed for this long counts as abandoned and is reclaimed. */
   lockStaleMs?: number
   /** Interval at which the holder refreshes the lock directory mtime. */
@@ -2040,7 +2046,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/fs/memory-queue/src/index.ts:29`](../packages/fs/memory-queue/src/index.ts)
+Source: [`packages/fs/memory-queue/src/index.ts:30`](../packages/fs/memory-queue/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 

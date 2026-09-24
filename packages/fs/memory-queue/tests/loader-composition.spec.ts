@@ -112,6 +112,32 @@ describe('memory-queue real Loader composition through cordis.yml', () => {
     expect(sorted[1]!.start).toBeGreaterThanOrEqual(sorted[0]!.end)
   })
 
+  it('runs different laneArgument values in parallel while same-lane calls serialize', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'dsh-queue-vault-'))
+    const ctx = await boot([
+      '    crossProcessLock: true',
+      `    vaultRoot: ${vault}`,
+      '    laneArgument: label',
+    ])
+    const intervals: Interval[] = []
+    registerSlowTool(ctx, intervals)
+
+    const [r1, r2, r3] = await Promise.all([call(ctx, 'a'), call(ctx, 'b'), call(ctx, 'a')])
+    expect(r1.isError).toBe(false)
+    expect(r2.isError).toBe(false)
+    expect(r3.isError).toBe(false)
+
+    const sorted = [...intervals].sort((x, y) => x.start - y.start)
+    // The two 'a' calls share a lane and cannot overlap...
+    const as = intervals.filter(i => i.label === 'a').sort((x, y) => x.start - y.start)
+    expect(as).toHaveLength(2)
+    expect(as[1]!.start).toBeGreaterThanOrEqual(as[0]!.end)
+    // ...but the 'b' call on its own lane overlaps the first 'a'.
+    const b = intervals.find(i => i.label === 'b')!
+    expect(b.start).toBeLessThan(as[0]!.end)
+    expect(sorted).toHaveLength(3)
+  })
+
   it('acquires and releases the vault lock directory when crossProcessLock is on', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'dsh-queue-vault-'))
     const ctx = await boot([
