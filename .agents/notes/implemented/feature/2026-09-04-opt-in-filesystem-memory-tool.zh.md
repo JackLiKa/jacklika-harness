@@ -30,7 +30,17 @@ dsh 已有丰富的事件溯源会话记忆，但缺少用户可长期拥有的�
 
 **在首个 PR 就引入完整的 `ctx.memory` 能力 seams 与多 provider。** 拒绝：用户明确要求 MVP。能力 seams 是长期正确方向，但先做一个具体工具包能控制改动范围，并在抽象前验证用户可见的契约。
 
-**在 MVP 中实现向量/RAG 搜索。** 拒绝：用户指出向量检索在很多场景有天然缺陷，希望先用简单的关键词/链接方案。未来可新增 `tool-memory-vector` 包提供基于 embedding 的检索，而无需修改本包。
+**在 MVP 中实现向量/RAG 搜索。** 拒绝：用户指出向量检索在很多场景有天然缺陷，希望先用简单的关键词/链接方案。独立的 `tool-memory-vector` 包现已提供可选的 embedding 检索，无需修改本包。
+
+## 伴随包
+
+三个可选包在不修改本插件的前提下扩展仓库能力：
+
+- `@deepseek-ai/dsh-tool-memory-graph` —— `wiki_graph` 返回仓库的 `[[link]]` 节点/边图或以某笔记为中心的子图，复用本包的解析辅助函数。
+- `@deepseek-ai/dsh-memory-queue` —— 通过 `tools/execute` waterfall 把 `wiki_write`（可配置）调用串行化，提供单写者顺序。
+- `@deepseek-ai/dsh-tool-memory-vector` —— `wiki_semantic_search` 通过可配置的 OpenAI 兼容端点取 embedding，按余弦相似度排序，向量按 mtime 缓存在仓库内 `.vector-index.json`。
+
+`indexHiddenDirs` 配置项（默认 `false`）让 `vaultRoot` 指向工作区根的部署也能索引 `.dsh/memory/` 中的笔记，同时 `.git`/`node_modules` 始终排除。
 
 ## 后果
 

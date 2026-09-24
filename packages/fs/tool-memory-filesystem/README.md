@@ -48,6 +48,7 @@ A relative `vaultRoot` resolves against the calling session's workspace.
 | `extensions` | `string[]` | `['.md']` | File extensions treated as notes. |
 | `maxLinkDepth` | `number` | `1` | Maximum `[[link]]` hops `wiki_read` resolves. |
 | `maxSearchResults` | `number` | `20` | Maximum `wiki_search` hits. |
+| `indexHiddenDirs` | `boolean` | `false` | Index directories whose names start with `.` (`.git` and `node_modules` stay excluded). Enable when `vaultRoot` points at the workspace root so `.dsh/memory/` notes are included. |
 
 ### Tools
 

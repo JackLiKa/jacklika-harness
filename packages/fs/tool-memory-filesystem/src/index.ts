@@ -39,6 +39,12 @@ export interface Config {
   maxLinkDepth?: number
   /** Maximum number of search hits to return. */
   maxSearchResults?: number
+  /**
+   * Descend into dot-directories while indexing. `.git`, `.obsidian`, and
+   * `node_modules` are always excluded. Enable this when `vaultRoot` points at
+   * a directory whose notes live under a hidden path such as `.dsh/memory/`.
+   */
+  indexHiddenDirs?: boolean
 }
 
 /** Schemastery configuration for the filesystem memory tool consumer. */
@@ -47,10 +53,30 @@ export const Config: z<Config> = z.object({
   extensions: z.array(z.string()).default(['.md']),
   maxLinkDepth: z.number().default(1),
   maxSearchResults: z.number().default(20),
+  indexHiddenDirs: z.boolean().default(false),
 })
 
 /** The shape after schemastery applied the defaults; `vaultRoot` is `''` when unset. */
 type ResolvedConfig = Required<Config>
+
+/**
+ * Compute the vault root for one tool call: an explicit `vaultRoot` wins,
+ * resolved relative to the session workspace; otherwise the call gets
+ * `<session cwd>/.dsh/memory/` so each workspace owns its notes.
+ * @param vaultRoot - the configured root (`''` selects the per-workspace default).
+ * @param exec - the current tool execution carrying the agent session.
+ * @returns absolute vault root for this call.
+ */
+export function resolveMemoryVaultRoot(
+  vaultRoot: string | undefined,
+  exec: Pick<ToolRunContext, 'agent'>,
+): string {
+  const sessionCwd = exec.agent?.session.header.cwd ?? process.cwd()
+  if (vaultRoot === undefined || vaultRoot === '') {
+    return join(sessionCwd, '.dsh', 'memory')
+  }
+  return isAbsolute(vaultRoot) ? vaultRoot : resolve(sessionCwd, vaultRoot)
+}
 
 /**
  * Reject paths that escape the vault root. The check resolves the candidate,
@@ -60,7 +86,7 @@ type ResolvedConfig = Required<Config>
  * @param candidate - a relative or absolute path.
  * @returns the absolute, contained path.
  */
-function containedPath(root: string, candidate: string): string {
+export function containedPath(root: string, candidate: string): string {
   const absolute = resolve(root, candidate)
   const withSep = root.endsWith(sep) ? root : `${root}${sep}`
   if (absolute !== root && !absolute.startsWith(withSep)) {
@@ -75,7 +101,7 @@ function containedPath(root: string, candidate: string): string {
  * @param text - raw file contents.
  * @returns frontmatter map and body.
  */
-function splitFrontmatter(text: string): { frontmatter: Record<string, unknown>; body: string } {
+export function splitFrontmatter(text: string): { frontmatter: Record<string, unknown>; body: string } {
   const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(text)
   if (match === null) {
     return { frontmatter: {}, body: text }
@@ -101,7 +127,7 @@ function splitFrontmatter(text: string): { frontmatter: Record<string, unknown>;
  * @param text - note body.
  * @returns array of link targets.
  */
-function extractLinks(text: string): string[] {
+export function extractLinks(text: string): string[] {
   const links: string[] = []
   const pattern = /\[\[([^|\]\r\n]+)(?:\|[^\]]*)?\]\]/g
   let match: RegExpExecArray | null
@@ -116,7 +142,7 @@ function extractLinks(text: string): string[] {
  * @param ext - extension string.
  * @returns `.md` form.
  */
-function dottedExtension(ext: string): string {
+export function dottedExtension(ext: string): string {
   return ext.startsWith('.') ? ext : `.${ext}`
 }
 
@@ -128,7 +154,7 @@ function dottedExtension(ext: string): string {
  * @param target - link target from `[[...]]`.
  * @returns the resolved absolute path, or `undefined` if no file exists.
  */
-async function resolveLinkTarget(
+export async function resolveLinkTarget(
   root: string,
   extensions: string[],
   target: string,
@@ -147,20 +173,26 @@ async function resolveLinkTarget(
 }
 
 /**
- * Recursively discover note files under the vault root, excluding hidden
- * directories and well-known non-content paths.
+ * Recursively discover note files under the vault root. `.git`, `.obsidian`,
+ * and `node_modules` are always excluded; other dot-directories are skipped
+ * unless `indexHiddenDirs` is enabled.
  * @param root - vault root.
  * @param extensions - note extensions.
+ * @param indexHiddenDirs - descend into remaining dot-directories.
  * @returns absolute paths of every note file.
  */
-async function listNotePaths(root: string, extensions: string[]): Promise<string[]> {
+export async function listNotePaths(
+  root: string,
+  extensions: string[],
+  indexHiddenDirs = false,
+): Promise<string[]> {
   const results: string[] = []
-  const exclude = new Set(['.git', 'node_modules', '.obsidian', '.dsh'])
+  const exclude = new Set(['.git', 'node_modules', '.obsidian'])
 
   async function walk(dir: string): Promise<void> {
     const entries = await readdir(dir, { withFileTypes: true })
     for (const entry of entries) {
-      if (entry.name.startsWith('.') && entry.name !== '.') continue
+      if (!indexHiddenDirs && entry.name.startsWith('.') && entry.name !== '.') continue
       if (exclude.has(entry.name)) continue
       const full = join(dir, entry.name)
       if (entry.isDirectory()) {
@@ -176,7 +208,7 @@ async function listNotePaths(root: string, extensions: string[]): Promise<string
 }
 
 /** Wire view of one linked note, truncated to avoid deep recursion types. */
-interface LinkedNote {
+export interface LinkedNote {
   id: string
   path: string
   frontmatter: Record<string, unknown>
@@ -194,7 +226,7 @@ interface LinkedNote {
  * @param visited - set of already-visited absolute paths to prevent cycles.
  * @returns the parsed note with linked notes attached.
  */
-async function readNote(
+export async function readNote(
   root: string,
   extensions: string[],
   maxLinkDepth: number,
@@ -241,10 +273,15 @@ async function readNote(
  * Markdown `# heading` or the basename without extension.
  * @param root - vault root.
  * @param extensions - note extensions.
+ * @param indexHiddenDirs - descend into dot-directories besides the fixed exclusions.
  * @returns a map from note id to search result.
  */
-async function buildIndex(root: string, extensions: string[]): Promise<Map<string, SearchResult>> {
-  const paths = await listNotePaths(root, extensions)
+export async function buildIndex(
+  root: string,
+  extensions: string[],
+  indexHiddenDirs = false,
+): Promise<Map<string, SearchResult>> {
+  const paths = await listNotePaths(root, extensions, indexHiddenDirs)
   const notes: Note[] = []
   for (const path of paths) {
     const text = await readFile(path, 'utf8')
@@ -300,20 +337,7 @@ export function apply(ctx: Context, config: Config): void {
   assertPositiveInteger('maxLinkDepth', resolved.maxLinkDepth)
   assertPositiveInteger('maxSearchResults', resolved.maxSearchResults)
 
-  /**
-   * Compute the vault root for this tool call: an explicit `vaultRoot` wins,
-   * resolved relative to the session workspace; otherwise every session gets
-   * `<session cwd>/.dsh/memory/` so each workspace owns its notes.
-   * @param exec - the current tool execution carrying the agent session.
-   * @returns absolute vault root for this call.
-   */
-  const vaultRootFor = (exec: ToolRunContext): string => {
-    const sessionCwd = exec.agent?.session.header.cwd ?? process.cwd()
-    if (resolved.vaultRoot === '') {
-      return join(sessionCwd, '.dsh', 'memory')
-    }
-    return isAbsolute(resolved.vaultRoot) ? resolved.vaultRoot : resolve(sessionCwd, resolved.vaultRoot)
-  }
+  const vaultRootFor = (exec: ToolRunContext): string => resolveMemoryVaultRoot(resolved.vaultRoot, exec)
 
   ctx.tools.register(defineTool({
     name: 'wiki_read',
@@ -364,7 +388,7 @@ export function apply(ctx: Context, config: Config): void {
     },
     async execute(args, exec) {
       const vaultRoot = vaultRootFor(exec)
-      const index = await buildIndex(vaultRoot, resolved.extensions)
+      const index = await buildIndex(vaultRoot, resolved.extensions, resolved.indexHiddenDirs)
       const terms = args.query.toLowerCase().split(/\s+/).filter(Boolean)
       const hits: SearchResult[] = []
       for (const result of index.values()) {

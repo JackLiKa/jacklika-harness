@@ -33,14 +33,20 @@ function resultText(result: { content: { type: string; text?: string }[] }): str
  *   session-workspace defaulting.
  * @returns the booted context.
  */
-async function boot(vaultRoot?: string): Promise<Context> {
+async function boot(vaultRoot?: string, indexHiddenDirs = false): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-memory-loader-'))
   const configPath = join(root, 'cordis.yml')
   const configLines = [
     "- name: '@deepseek-ai/dsh-system-prompt'",
     "- name: '@deepseek-ai/dsh-tools'",
     "- name: '@deepseek-ai/dsh-tool-memory-filesystem'",
-    ...vaultRoot !== undefined ? ['  config:', `    vaultRoot: ${vaultRoot}`] : [],
+    ...vaultRoot !== undefined || indexHiddenDirs
+      ? [
+        '  config:',
+        ...vaultRoot !== undefined ? [`    vaultRoot: ${vaultRoot}`] : [],
+        ...indexHiddenDirs ? ['    indexHiddenDirs: true'] : [],
+      ]
+      : [],
     '',
   ]
   await writeFile(configPath, configLines.join('\n'))
@@ -186,5 +192,38 @@ describe('tool-memory-filesystem real Loader composition through cordis.yml', ()
     if (readResult.isError) throw new Error('expected wiki_read success')
     const note = JSON.parse(resultText(readResult)) as { id: string }
     expect(note.id).toBe('daily/2026-09-24.md')
+  })
+
+  it('indexes .dsh notes only when indexHiddenDirs is enabled', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-memory-hidden-'))
+    const hidden = join(workspace, '.dsh', 'memory')
+    await mkdir(hidden, { recursive: true })
+    await writeFile(join(hidden, 'secret.md'), '# Hidden note\n\nUnder the workspace dot directory.\n')
+
+    const offCtx = await boot(workspace)
+    const missResult = await offCtx.tools.execute({
+      signal: new AbortController().signal,
+      callId: ToolCallId('search-hidden-off'),
+      name: 'wiki_search',
+      arguments: { query: 'Hidden' },
+    })
+    expect(missResult.isError).toBe(false)
+    if (missResult.isError) throw new Error('expected wiki_search success')
+    expect(JSON.parse(resultText(missResult))).toEqual([])
+
+    await offCtx.fiber.dispose()
+    context = undefined
+
+    const onCtx = await boot(workspace, true)
+    const hitResult = await onCtx.tools.execute({
+      signal: new AbortController().signal,
+      callId: ToolCallId('search-hidden-on'),
+      name: 'wiki_search',
+      arguments: { query: 'Hidden' },
+    })
+    expect(hitResult.isError).toBe(false)
+    if (hitResult.isError) throw new Error('expected wiki_search success')
+    const hits = JSON.parse(resultText(hitResult)) as { id: string }[]
+    expect(hits.some(h => h.id === join('.dsh', 'memory', 'secret.md'))).toBe(true)
   })
 })

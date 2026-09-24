@@ -2009,6 +2009,22 @@ export interface ReconnectConfig {
 
 来源： [`packages/mcp/mcp-client/src/index.ts:104`](../packages/mcp/mcp-client/src/index.ts)
 
+<a id="deepseek-aidsh-memory-queue"></a>
+
+## `@deepseek-ai/dsh-memory-queue`
+
+需要：`tools`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Tool names whose dispatches run one-at-a-time in registration order. */
+  toolNames?: string[]
+}
+```
+
+来源： [`packages/fs/memory-queue/src/index.ts:20`](../packages/fs/memory-queue/src/index.ts)
+
 <a id="deepseek-aidsh-message-feedback"></a>
 
 ## `@deepseek-ai/dsh-message-feedback`
@@ -3485,11 +3501,80 @@ export interface Config {
   maxLinkDepth?: number
   /** Maximum number of search hits to return. */
   maxSearchResults?: number
+  /**
+   * Descend into dot-directories while indexing. `.git`, `.obsidian`, and
+   * `node_modules` are always excluded. Enable this when `vaultRoot` points at
+   * a directory whose notes live under a hidden path such as `.dsh/memory/`.
+   */
+  indexHiddenDirs?: boolean
 }
 ```
 
 来源：[`packages/fs/tool-memory-filesystem/src/index.ts:29`](../packages/fs/tool-memory-filesystem/src/index.ts)
 
+<a id="deepseek-aidsh-tool-memory-graph"></a>
+
+## `@deepseek-ai/dsh-tool-memory-graph`
+
+需要：`tools`
+
+```ts config-catalog
+/** Plugin configuration, mirroring the filesystem memory vault settings. */
+export interface Config {
+  /**
+   * Explicit vault root. When omitted, each tool call resolves the memory
+   * directory under the calling session's workspace (`<cwd>/.dsh/memory/`).
+   * A relative path is resolved against the session workspace.
+   */
+  vaultRoot?: string
+  /** File extensions to treat as notes. */
+  extensions?: string[]
+  /** Default traversal depth when the call omits `depth`. */
+  maxDepth?: number
+  /** Maximum nodes returned in one graph. */
+  maxNodes?: number
+  /** Descend into dot-directories besides the fixed exclusions while indexing. */
+  indexHiddenDirs?: boolean
+}
+```
+
+来源：[`packages/fs/tool-memory-graph/src/index.ts:26`](../packages/fs/tool-memory-graph/src/index.ts)
+
+<a id="deepseek-aidsh-tool-memory-vector"></a>
+
+## `@deepseek-ai/dsh-tool-memory-vector`
+
+需要：`tools`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /**
+   * Explicit vault root. When omitted, each tool call resolves the memory
+   * directory under the calling session's workspace (`<cwd>/.dsh/memory/`).
+   * A relative path is resolved against the session workspace.
+   */
+  vaultRoot?: string
+  /** File extensions to treat as notes. */
+  extensions?: string[]
+  /** OpenAI-compatible embeddings endpoint (e.g. `http://localhost:11434/v1/embeddings`). */
+  endpoint: string
+  /** Embedding model name understood by the endpoint (e.g. `nomic-embed-text`). */
+  model: string
+  /** Optional bearer token sent to the embeddings endpoint. */
+  apiKey?: string
+  /** Maximum search hits to return. */
+  maxResults?: number
+  /** Maximum UTF-8 characters of one note sent to the embeddings endpoint. */
+  maxCharsPerNote?: number
+  /** Maximum inputs per embeddings request. */
+  batchSize?: number
+  /** Descend into dot-directories besides the fixed exclusions while indexing. */
+  indexHiddenDirs?: boolean
+}
+```
+
+来源：[`packages/fs/tool-memory-vector/src/index.ts:27`](../packages/fs/tool-memory-vector/src/index.ts)
 
 <a id="deepseek-aidsh-tool-present"></a>
 

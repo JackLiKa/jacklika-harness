@@ -30,7 +30,17 @@ Without `vaultRoot`, each tool call resolves the vault to `<session cwd>/.dsh/me
 
 **Introduce a full `ctx.memory` capability seam with providers in the first PR.** Rejected: the user explicitly asked for an MVP. A seam is the right long-term shape, but starting with one concrete tool package keeps the change small and proves the user-facing contract before abstracting it.
 
-**Implement vector/RAG search in the MVP.** Rejected: the user noted that vector retrieval has inherent limitations in many scenarios and preferred a simple keyword/link approach first. A future `tool-memory-vector` package can add embedding-based retrieval without touching this one.
+**Implement vector/RAG search in the MVP.** Rejected: the user noted that vector retrieval has inherent limitations in many scenarios and preferred a simple keyword/link approach first. The separate `tool-memory-vector` package now provides opt-in embedding retrieval without touching this one.
+
+## Companion packages
+
+Three opt-in packages extend the vault without modifying this plugin:
+
+- `@deepseek-ai/dsh-tool-memory-graph` — `wiki_graph` returns the vault's `[[link]]` node/edge graph or a note-centered subgraph, reusing this package's parsing helpers.
+- `@deepseek-ai/dsh-memory-queue` — serializes `wiki_write` (configurable) dispatches through the `tools/execute` waterfall for single-writer ordering.
+- `@deepseek-ai/dsh-tool-memory-vector` — `wiki_semantic_search` ranks notes by cosine similarity over embeddings from a configurable OpenAI-compatible endpoint, with a per-vault mtime-keyed `.vector-index.json` cache.
+
+An `indexHiddenDirs` config flag (default `false`) lets a deployment whose `vaultRoot` is the workspace root index `.dsh/memory/` notes while keeping `.git`/`node_modules` excluded.
 
 ## Consequences
 

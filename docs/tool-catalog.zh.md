@@ -35,6 +35,8 @@
 | `@deepseek-ai/dsh-tool-fs` | `edit`、`read`、`read_image`、`write` | `ctx.tools`、`ctx.fs`、`ctx.systemPrompt`、`ctx.attachments (image-tool registration)`、`ctx.llm + an image-capable route (image-tool execution)` | `tool/call`、`fs/write-intent or fs/edit-intent for mutations`、`fs/observed after read presence/absence or successful file operation`、`durable attachment (read_image)`、`tool/result` | - | 先读后写／编辑策略由 `@deepseek-ai/dsh-fs-observation-policy` 添加；它是一个 `fs/*` 事件门禁插件，不会改变 schema。加载这些工具的部署按预期也应加载该插件。没有 `ctx.attachments` 时图片工具不会注册；其 schema 与路由无关，执行时除非确切路由的模型声明图片输入，否则拒绝。 |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`、`grep` | `ctx.tools`、`ctx.subprocess`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn 随包提供的 ripgrep 二进制文件（`@vscode/ripgrep`），并作为普通前台调用运行，绝不作为后台任务；无需在宿主机安装 `rg`，也不经过 shell 层。本目录使用 `sampleOverCapGlobResults: true`；部署必须显式选择该行为。结果超过上限时，会通过可选的 ctx.spillStore 后端保存完整的格式化列表；在共置部署中，如果后端公开本地路径，返回的定位信息可供后续读取／搜索。 |
 | `@deepseek-ai/dsh-tool-memory-filesystem` | `wiki_read`、`wiki_search`、`wiki_write` | `ctx.tools`、`ctx.systemPrompt（经 ToolRuntime 传递）` | `tool/call`、`tool/result` | - | 基于文件系统的 wiki/记忆工具：wiki_read 解析 YAML frontmatter 并跟随 Obsidian 风格 `[[link]]` 链接，wiki_search 在仓库中做关键词搜索，wiki_write 创建或追加笔记。所有路径都被约束在按调用解析出的仓库根目录内——显式 vaultRoot，或未设置时会话工作区下的 `.dsh/memory/`。 |
+| `@deepseek-ai/dsh-tool-memory-graph` | `wiki_graph` | `ctx.tools`、`ctx.systemPrompt（经 ToolRuntime 传递）` | `tool/call`、`tool/result` | - | 与 `@deepseek-ai/dsh-tool-memory-filesystem` 使用相同仓库根解析的只读 `[[link]]` 图查询：wiki_graph 返回全部笔记与边，或返回某条笔记在配置深度内的可达子图。该包复用 filesystem 插件的解析辅助函数，从不写入仓库。 |
+| `@deepseek-ai/dsh-tool-memory-vector` | `wiki_semantic_search` | `ctx.tools`、`ctx.systemPrompt（经 ToolRuntime 传递）`、`对配置的 embeddings 端点的网络访问` | `tool/call`、`tool/result` | - | wiki_semantic_search 通过可配置的 OpenAI 兼容端点获取 embedding，按余弦相似度排序笔记；每条笔记的向量按文件 mtime 缓存在解析出的仓库根下的 `.vector-index.json`。该工具补充而非替代 wiki_search 关键词检索。 |
 | `@deepseek-ai/dsh-tool-terminal` | `terminal_close`、`terminal_list`、`terminal_open`、`terminal_read`、`terminal_send`、`terminal_signal` | `ctx.tools`、`ctx.terminals`、`ctx.systemPrompt`、`ctx.jobs at call time for run_in_background` | `tool/call`、`tool/result` | - | 这 6 个终端工具需要选择启用，用于补充一次性 bash／文件系统工具。`terminal_send(run_in_background: true)` 会注册到 `ctx.jobs`；schema 不包含 TUI、具名按键序列、BEL、调整尺寸、自动启动和跨 agent 共享。 |
 | `@deepseek-ai/dsh-tool-goal` | `create_goal`、`get_goal`、`update_goal` | `ctx.tools`、`ctx.agents`、`ctx.goals`、`ctx.systemPrompt`、`a calling Agent in an authorized open turn` | `tool/call`、`goal/change for mutations`、`tool/result` | - | create、edit、pause 和 resume 要求直接来自人类的根权限；complete 和 blocked 也接受确切的当前 Goal Round。blocked 的默认下限是 3 个获准的 Round。 |
 | `@deepseek-ai/dsh-schedule` | `schedule_create`、`schedule_delete`、`schedule_list` | `ctx.tools`、`ctx.sessions`、Session 持久化、未来创建的 live 根 Agent | `tool/call`、`schedule/change create or delete`、`tool/result` | - | 仅在选择启用的 Schedule 插件加载后创建的 live 根 Agent scope 内注册。版本 1 接受 after_seconds、显式绝对 at 和有界固定速率 every_seconds，并披露 session-local 交付；管理读取与变更必须通过共享的 Session 持久化 barrier。 |
@@ -1196,6 +1198,60 @@ glob 和 grep 是无条件可用的发现工具，通过 ctx.subprocess spawn �
 
 基于文件系统的 wiki/记忆工具：wiki_read 解析 YAML frontmatter 并跟随 Obsidian 风格 `[[link]]` 链接，wiki_search 在仓库中做关键词搜索，wiki_write 创建或追加笔记。所有路径都被约束在按调用解析出的仓库根目录内——显式 vaultRoot，或未设置时会话工作区下的 `.dsh/memory/`。
 
+<a id="deepseek-aidsh-tool-memory-graph"></a>
+
+## `@deepseek-ai/dsh-tool-memory-graph`
+
+### `wiki_graph`
+
+Return the Obsidian-style [[link]] graph of the wiki vault: note ids, titles, and directed edges. Without an id it returns the whole vault graph (node-capped); with an id it returns the subgraph reachable from that note within the given depth.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Optional vault-relative note id to center the subgraph on (e.g. \"concepts/RAG.md\")."
+    },
+    "depth": {
+      "type": "integer",
+      "description": "Maximum [[link]] hops from the center note; defaults to the configured maxDepth."
+    }
+  }
+}
+```
+
+来源：[`packages/fs/tool-memory-graph/src/index.ts`](../packages/fs/tool-memory-graph/src/index.ts)
+
+与 `@deepseek-ai/dsh-tool-memory-filesystem` 使用相同仓库根解析的只读 `[[link]]` 图查询：wiki_graph 返回全部笔记与边，或返回某条笔记在配置深度内的可达子图。该包复用 filesystem 插件的解析辅助函数，从不写入仓库。
+
+<a id="deepseek-aidsh-tool-memory-vector"></a>
+
+## `@deepseek-ai/dsh-tool-memory-vector`
+
+### `wiki_semantic_search`
+
+Semantic search over the wiki vault using embeddings: ranks notes by meaning rather than exact keywords. Returns matching note ids with similarity scores. Use wiki_search for exact keyword lookups.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Natural-language description of the note content to find."
+    }
+  },
+  "required": [
+    "query"
+  ]
+}
+```
+
+来源：[`packages/fs/tool-memory-vector/src/index.ts`](../packages/fs/tool-memory-vector/src/index.ts)
+
+wiki_semantic_search 通过可配置的 OpenAI 兼容端点获取 embedding，按余弦相似度排序笔记；每条笔记的向量按文件 mtime 缓存在解析出的仓库根下的 `.vector-index.json`。该工具补充而非替代 wiki_search 关键词检索。
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 

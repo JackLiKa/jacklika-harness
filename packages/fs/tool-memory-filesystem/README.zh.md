@@ -48,6 +48,7 @@ kind: "package-reference"
 | `extensions` | `string[]` | `['.md']` | 视为笔记的文件扩展名。 |
 | `maxLinkDepth` | `number` | `1` | `wiki_read` 解析 `[[link]]` 的最大深度。 |
 | `maxSearchResults` | `number` | `20` | `wiki_search` 返回的最大结果数。 |
+| `indexHiddenDirs` | `boolean` | `false` | 是否索引以 `.` 开头的目录（`.git` 与 `node_modules` 始终排除）。当 `vaultRoot` 指向工作区根时开启，以纳入 `.dsh/memory/` 中的笔记。 |
 
 ### 工具
 

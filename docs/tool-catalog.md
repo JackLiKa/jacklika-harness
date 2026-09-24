@@ -31,6 +31,8 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-fs` | `edit`, `read`, `read_image`, `write` | `ctx.tools`, `ctx.fs`, `ctx.systemPrompt`, `ctx.attachments (image-tool registration)`, `ctx.llm + an image-capable route (image-tool execution)` | `tool/call`, `fs/write-intent or fs/edit-intent for mutations`, `fs/observed after read presence/absence or successful file operation`, `durable attachment (read_image)`, `tool/result` | - | The read-before-write/edit policy is added by `@deepseek-ai/dsh-fs-observation-policy` (an `fs/*` event-gate plugin, no schema change); a deployment that loads these tools is expected to also load it. The image tool is not registered without `ctx.attachments`; its schema is route-independent, and execution refuses unless the exact routed model declares image input. |
 | `@deepseek-ai/dsh-tool-fs-search` | `glob`, `grep` | `ctx.tools`, `ctx.subprocess`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments. |
 | `@deepseek-ai/dsh-tool-memory-filesystem` | `wiki_read`, `wiki_search`, `wiki_write` | `ctx.tools`, `ctx.systemPrompt (transitive through ToolRuntime)` | `tool/call`, `tool/result` | - | Filesystem-backed wiki/memory tools: wiki_read parses YAML frontmatter and follows Obsidian-style [[link]] references, wiki_search keyword-searches the vault, and wiki_write creates or appends notes. Path containment is enforced against the vault root resolved per call — the configured vaultRoot or, when unset, `.dsh/memory/` under the session workspace. |
+| `@deepseek-ai/dsh-tool-memory-graph` | `wiki_graph` | `ctx.tools`, `ctx.systemPrompt (transitive through ToolRuntime)` | `tool/call`, `tool/result` | - | Read-only [[link]] graph queries over the same vault resolution as `@deepseek-ai/dsh-tool-memory-filesystem`: wiki_graph returns every note and edge, or the reachable subgraph around one note within a configured depth. The package reuses the filesystem plugin's parsing helpers; it never writes to the vault. |
+| `@deepseek-ai/dsh-tool-memory-vector` | `wiki_semantic_search` | `ctx.tools`, `ctx.systemPrompt (transitive through ToolRuntime)`, `network access to the configured embeddings endpoint` | `tool/call`, `tool/result` | - | wiki_semantic_search ranks notes by cosine similarity over embeddings fetched from a configurable OpenAI-compatible endpoint, with per-note embeddings cached by file mtime in `.vector-index.json` under the resolved vault root. The tool complements — never replaces — wiki_search keyword retrieval. |
 | `@deepseek-ai/dsh-tool-terminal` | `terminal_close`, `terminal_list`, `terminal_open`, `terminal_read`, `terminal_send`, `terminal_signal` | `ctx.tools`, `ctx.terminals`, `ctx.systemPrompt`, `ctx.jobs at call time for run_in_background` | `tool/call`, `tool/result` | - | The six terminal tools are opt-in and complement one-shot shell/filesystem tools. `terminal_send(run_in_background: true)` registers with `ctx.jobs`; TUI, named key sequences, BEL, resize, auto-start, and cross-agent sharing are absent from the schema. |
 | `@deepseek-ai/dsh-tool-goal` | `create_goal`, `get_goal`, `update_goal` | `ctx.tools`, `ctx.agents`, `ctx.goals`, `ctx.systemPrompt`, `a calling Agent in an authorized open turn` | `tool/call`, `goal/change for mutations`, `tool/result` | - | create, edit, pause, and resume require direct-human root authority; complete and blocked also accept the exact current goal round. The default blocked lower bound is three admitted rounds. |
 | `@deepseek-ai/dsh-schedule` | `schedule_create`, `schedule_delete`, `schedule_list` | `ctx.tools`, `ctx.sessions`, `Session persistence`, `a future live root Agent` | `tool/call`, `schedule/change create or delete`, `tool/result` | - | Registered only inside live root Agent scopes created after the opt-in Schedule plugin loads. Version 1 accepts after_seconds, explicit absolute at, and bounded fixed-rate every_seconds, and discloses session-local delivery; management reads and mutations require the shared Session persistence barrier. |
@@ -1189,6 +1191,61 @@ Create a new note or append to an existing note in the wiki vault. The path is r
 Source: [`packages/fs/tool-memory-filesystem/src/index.ts`](../packages/fs/tool-memory-filesystem/src/index.ts)
 
 Filesystem-backed wiki/memory tools: wiki_read parses YAML frontmatter and follows Obsidian-style [[link]] references, wiki_search keyword-searches the vault, and wiki_write creates or appends notes. Path containment is enforced against the vault root resolved per call — the configured vaultRoot or, when unset, `.dsh/memory/` under the session workspace.
+
+<a id="deepseek-aidsh-tool-memory-graph"></a>
+
+## `@deepseek-ai/dsh-tool-memory-graph`
+
+### `wiki_graph`
+
+Return the Obsidian-style [[link]] graph of the wiki vault: note ids, titles, and directed edges. Without an id it returns the whole vault graph (node-capped); with an id it returns the subgraph reachable from that note within the given depth.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Optional vault-relative note id to center the subgraph on (e.g. \"concepts/RAG.md\")."
+    },
+    "depth": {
+      "type": "integer",
+      "description": "Maximum [[link]] hops from the center note; defaults to the configured maxDepth."
+    }
+  }
+}
+```
+
+Source: [`packages/fs/tool-memory-graph/src/index.ts`](../packages/fs/tool-memory-graph/src/index.ts)
+
+Read-only [[link]] graph queries over the same vault resolution as `@deepseek-ai/dsh-tool-memory-filesystem`: wiki_graph returns every note and edge, or the reachable subgraph around one note within a configured depth. The package reuses the filesystem plugin's parsing helpers; it never writes to the vault.
+
+<a id="deepseek-aidsh-tool-memory-vector"></a>
+
+## `@deepseek-ai/dsh-tool-memory-vector`
+
+### `wiki_semantic_search`
+
+Semantic search over the wiki vault using embeddings: ranks notes by meaning rather than exact keywords. Returns matching note ids with similarity scores. Use wiki_search for exact keyword lookups.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Natural-language description of the note content to find."
+    }
+  },
+  "required": [
+    "query"
+  ]
+}
+```
+
+Source: [`packages/fs/tool-memory-vector/src/index.ts`](../packages/fs/tool-memory-vector/src/index.ts)
+
+wiki_semantic_search ranks notes by cosine similarity over embeddings fetched from a configurable OpenAI-compatible endpoint, with per-note embeddings cached by file mtime in `.vector-index.json` under the resolved vault root. The tool complements — never replaces — wiki_search keyword retrieval.
 
 <a id="deepseek-aidsh-tool-terminal"></a>
 
