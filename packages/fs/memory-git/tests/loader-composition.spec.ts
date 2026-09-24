@@ -113,6 +113,24 @@ describe('memory-git real Loader composition through cordis.yml', () => {
     expect(log).not.toContain('agents/agent-1/notes/x.md')
   })
 
+  it('creates an own .git inside a nested vault instead of joining the parent repo', async () => {
+    const parent = await mkdtemp(join(tmpdir(), 'dsh-git-parent-'))
+    await execFileAsync('git', ['-C', parent, 'init'])
+    const vault = join(parent, '.dsh', 'memory')
+    const ctx = await boot(vault)
+
+    const result = await write(ctx, 'w1', 'shared/summary.md')
+    expect(result.isError).toBe(false)
+
+    // The vault owns its repository; the parent repo's history is untouched.
+    const vaultLog = await gitLog(vault)
+    expect(vaultLog).toContain('wiki_write: shared/summary.md')
+    const { stdout: parentLog } = await execFileAsync(
+      'git', ['-C', parent, 'log', '--format=%s', '--all'],
+    ).catch(() => ({ stdout: '', stderr: '' }))
+    expect(parentLog).not.toContain('wiki_write: shared/summary.md')
+  })
+
   it('commits every write when prefixes is empty', async () => {
     const vault = await mkdtemp(join(tmpdir(), 'dsh-git-vault-'))
     const ctx = await boot(vault, ['    prefixes: []'])

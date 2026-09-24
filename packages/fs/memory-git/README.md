@@ -42,7 +42,8 @@ Mount after `dsh-memory-queue` so commits run inside the vault lock:
 | `idArgument` | `string` | `'id'` | Argument carrying the vault-relative note id. |
 | `vaultRoot` | `string` | `''` → `<session cwd>/.dsh/memory/` | Repository working tree; same per-call resolution as the memory tools. |
 | `prefixes` | `string[]` | `['shared/']` | Only ids under these prefixes are committed; `[]` commits every write. |
-| `autoInit` | `boolean` | `true` | Run `git init` when the vault is not already inside a repository. |
+| `nestedRepo` | `'init' \| 'inherit' \| 'own'` | `'init'` | `init`: vault owns its `.git`, never joining an enclosing repo. `inherit`: join the nearest enclosing repo (init only when none exists). `own`: require an existing `<vault>/.git`, fail otherwise. |
+| `autoInit` | `boolean` | `true` | Permit `git init` when the selected `nestedRepo` mode allows it. |
 | `authorName` / `authorEmail` | `string` | `dsh-memory-git` / `dsh-memory-git@localhost` | Commit identity passed via `git -c`. |
 | `commitPrefix` | `string` | `'wiki_write'` | Commit message prefix; the note id follows it. |
 | `indexLockRetries` / `indexLockRetryMs` | `number` | `30` / `100` | Retries when `.git/index.lock` is held by another git process. |
@@ -52,7 +53,7 @@ Mount after `dsh-memory-queue` so commits run inside the vault lock:
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-The plugin installs one `ctx.on('tools/execute', …)` waterfall listener that runs `next()` first and commits only on success. The commit sequence is `rev-parse --git-dir` (missing repo → `git init` when `autoInit`), `status --porcelain -- <id>` (clean → skip so no empty commits), `add -- <id>`, then `commit -m "<commitPrefix>: <id>" -- <id>` with the pathspec limiting the record to the written note. All git calls serialize on one in-process chain and retry only on a held `index.lock`. A vault nested inside an enclosing repository joins that repository — `rev-parse` resolves upward — so a workspace vault is versioned by the workspace repo unless it owns a `.git`. A failed commit fails the dispatch result even though the note was written; the divergence is surfaced rather than hidden.
+The plugin installs one `ctx.on('tools/execute', …)` waterfall listener that runs `next()` first and commits only on success. Repository selection follows `nestedRepo`: `init` (default) checks `<vault>/.git` directly and creates it under `autoInit`, so a vault inside a git-managed workspace never leaks commits into the enclosing project; `inherit` resolves `rev-parse --git-dir` upward and joins the nearest enclosing repo; `own` fails when `<vault>/.git` is absent. The commit sequence is `status --porcelain -- <id>` (clean → skip so no empty commits), `add -- <id>`, then `commit -m "<commitPrefix>: <id>" -- <id>` with the pathspec limiting the record to the written note. All git calls serialize on one in-process chain and retry only on a held `index.lock`. A failed commit fails the dispatch result even though the note was written; the divergence is surfaced rather than hidden.
 
 -----
 

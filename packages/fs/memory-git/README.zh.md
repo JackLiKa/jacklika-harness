@@ -42,7 +42,8 @@ kind: "package-reference"
 | `idArgument` | `string` | `'id'` | 携带仓库相对笔记 id 的参数名。 |
 | `vaultRoot` | `string` | `''` → `<session cwd>/.dsh/memory/` | git 工作树；与记忆工具相同的按调用解析规则。 |
 | `prefixes` | `string[]` | `['shared/']` | 仅此前缀下的 id 会被提交；`[]` 表示提交所有写入。 |
-| `autoInit` | `boolean` | `true` | 仓库不在 git 工作树内时执行 `git init`。 |
+| `nestedRepo` | `'init' \| 'inherit' \| 'own'` | `'init'` | `init`：vault 拥有自己的 `.git`，不并入外层仓库；`inherit`：并入最近的外层仓库（找不到时才 init）；`own`：要求 `<vault>/.git` 已存在，否则报错。 |
+| `autoInit` | `boolean` | `true` | 在所选 `nestedRepo` 模式允许时执行 `git init`。 |
 | `authorName` / `authorEmail` | `string` | `dsh-memory-git` / `dsh-memory-git@localhost` | 经 `git -c` 传入的提交身份。 |
 | `commitPrefix` | `string` | `'wiki_write'` | 提交信息前缀，后接笔记 id。 |
 | `indexLockRetries` / `indexLockRetryMs` | `number` | `30` / `100` | `.git/index.lock` 被其他 git 进程占用时的重试次数与间隔。 |
@@ -52,7 +53,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 实现说明
 
-插件安装一个 `ctx.on('tools/execute', …)` waterfall 监听器：先执行 `next()`，仅在成功时提交。提交序列为 `rev-parse --git-dir`（无仓库时在 `autoInit` 下 `git init`）→ `status --porcelain -- <id>`（干净则跳过，避免空提交）→ `add -- <id>` → `commit -m "<commitPrefix>: <id>" -- <id>`，pathspec 把记录限定在被写笔记内。所有 git 调用经一条进程内链串行，且只对被占用的 `index.lock` 重试。嵌套在父仓库中的 vault 会加入父仓库——`rev-parse` 向上解析——因此工作区内的 vault 默认由工作区仓库版本化，除非 vault 自己拥有 `.git`。提交失败会让该次派发返回错误，尽管笔记已写入——分叉被显式暴露而非隐藏。
+插件安装一个 `ctx.on('tools/execute', …)` waterfall 监听器：先执行 `next()`，仅在成功时提交。仓库选择遵循 `nestedRepo`：`init`（默认）直接检查 `<vault>/.git` 并在 `autoInit` 下创建，使 git 管理工作区内的 vault 不会把提交泄漏进外层项目；`inherit` 用 `rev-parse --git-dir` 向上解析并入最近外层仓库；`own` 在 `<vault>/.git` 缺失时报错。提交序列为 `status --porcelain -- <id>`（干净则跳过，避免空提交）→ `add -- <id>` → `commit -m "<commitPrefix>: <id>" -- <id>`，pathspec 把记录限定在被写笔记内。所有 git 调用经一条进程内链串行，且只对被占用的 `index.lock` 重试。提交失败会让该次派发返回错误，尽管笔记已写入——分叉被显式暴露而非隐藏。
 
 -----
 

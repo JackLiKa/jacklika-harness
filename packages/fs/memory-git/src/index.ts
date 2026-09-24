@@ -10,7 +10,8 @@
  */
 
 import { execFile } from 'node:child_process'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -41,7 +42,15 @@ export interface Config {
    * matching write.
    */
   prefixes?: string[]
-  /** Run `git init` in the vault when it is not already a repository. */
+  /**
+   * How the vault relates to git repositories: `init` gives the vault its own
+   * `.git` (created under `autoInit`), never joining an enclosing repo;
+   * `inherit` joins the nearest enclosing repo (initializing the vault only
+   * when none exists and `autoInit` allows); `own` requires `<vault>/.git`
+   * to exist already and fails otherwise.
+   */
+  nestedRepo?: 'init' | 'inherit' | 'own'
+  /** Run `git init` in the vault when the selected `nestedRepo` mode allows it. */
   autoInit?: boolean
   /** Commit author name written into `git -c user.name`. */
   authorName?: string
@@ -61,6 +70,7 @@ export const Config: z<Config> = z.object({
   idArgument: z.string().default('id'),
   vaultRoot: z.string().default(''),
   prefixes: z.array(z.string()).default(['shared/']),
+  nestedRepo: z.union(['init', 'inherit', 'own']).default('init'),
   autoInit: z.boolean().default(true),
   authorName: z.string().default('dsh-memory-git'),
   authorEmail: z.string().default('dsh-memory-git@localhost'),
@@ -105,10 +115,20 @@ async function git(vault: string, args: string[], resolved: ResolvedConfig): Pro
 async function commitWrite(vault: string, id: string, resolved: ResolvedConfig): Promise<void> {
   containedPath(vault, id)
   await mkdir(vault, { recursive: true })
-  await git(vault, ['rev-parse', '--git-dir'], resolved).catch(async (error: unknown) => {
-    if (!resolved.autoInit) throw error
+  const hasOwnRepo = await stat(join(vault, '.git')).then(() => true, () => false)
+  if (resolved.nestedRepo === 'own' && !hasOwnRepo) {
+    throw new Error(`memory-git: ${vault} has no .git and nestedRepo 'own' forbids creating one`)
+  }
+  if (resolved.nestedRepo === 'init' && !hasOwnRepo) {
+    if (!resolved.autoInit) throw new Error(`memory-git: ${vault} has no .git and autoInit is off`)
     await git(vault, ['init'], resolved)
-  })
+  }
+  if (resolved.nestedRepo === 'inherit') {
+    await git(vault, ['rev-parse', '--git-dir'], resolved).catch(async (error: unknown) => {
+      if (!resolved.autoInit) throw error
+      await git(vault, ['init'], resolved)
+    })
+  }
   const status = await git(vault, ['status', '--porcelain', '--', id], resolved)
   if (status.trim() === '') return
   await git(vault, ['add', '--', id], resolved)

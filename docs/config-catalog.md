@@ -2030,7 +2030,15 @@ export interface Config {
    * matching write.
    */
   prefixes?: string[]
-  /** Run `git init` in the vault when it is not already a repository. */
+  /**
+   * How the vault relates to git repositories: `init` gives the vault its own
+   * `.git` (created under `autoInit`), never joining an enclosing repo;
+   * `inherit` joins the nearest enclosing repo (initializing the vault only
+   * when none exists and `autoInit` allows); `own` requires `<vault>/.git`
+   * to exist already and fails otherwise.
+   */
+  nestedRepo?: 'init' | 'inherit' | 'own'
+  /** Run `git init` in the vault when the selected `nestedRepo` mode allows it. */
   autoInit?: boolean
   /** Commit author name written into `git -c user.name`. */
   authorName?: string
@@ -2045,7 +2053,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/fs/memory-git/src/index.ts:29`](../packages/fs/memory-git/src/index.ts)
+Source: [`packages/fs/memory-git/src/index.ts:30`](../packages/fs/memory-git/src/index.ts)
 
 <a id="deepseek-aidsh-memory-queue"></a>
 
