@@ -213,14 +213,8 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-fs-local` | yes | Local-filesystem implementation of the DeepSeek Harness filesystem seam (ctx.fs) |
 | `@deepseek-ai/dsh-fs-observation-policy` | no | File-context policy plugin for the DeepSeek Harness — observed-state, read-before-edit, and version-guarded write/edit added over the ctx.fs provider seam through the fs/* event gate (no service API) |
 | `@deepseek-ai/dsh-fs-sandbox` | yes | Sandbox-enforcing implementation of the DeepSeek Harness filesystem seam: fences write/edit by the per-call sandbox mode (read-only denies mutation, workspace-write contains it to the workspace + temp roots) while reads pass through |
-| `@deepseek-ai/dsh-memory-git` | yes | Commits successful memory-tool writes to git through the tools/execute waterfall — opt-in version history, rollback, and audit for the vault. |
-| `@deepseek-ai/dsh-memory-queue` | yes | Serializes selected model-facing tool calls (default wiki_write) through the tools/execute waterfall so same-vault mutations cannot race. |
-| `@deepseek-ai/dsh-memory-scope` | yes | Partitions memory-tool write ids into per-agent namespaces through the tools/execute waterfall so agents cannot collide on the same note by construction. |
 | `@deepseek-ai/dsh-tool-fs` | yes | Model-facing filesystem tools (read, write, edit) over the DeepSeek Harness filesystem seam (ctx.fs) |
 | `@deepseek-ai/dsh-tool-fs-search` | yes | Model-facing filesystem discovery tools (glob, grep) backed by the packaged ripgrep binary (@vscode/ripgrep) |
-| `@deepseek-ai/dsh-tool-memory-filesystem` | yes | Model-facing wiki/memory tools over a local Markdown vault: read, search, and write notes with Obsidian-style links and YAML frontmatter. |
-| `@deepseek-ai/dsh-tool-memory-graph` | yes | Model-facing link-graph tool over a Markdown memory vault: returns note nodes and [[link]] edges, or the subgraph reachable from one note. |
-| `@deepseek-ai/dsh-tool-memory-vector` | yes | Model-facing semantic search over a Markdown memory vault: embeds notes through a configurable OpenAI-compatible embeddings endpoint and ranks results by cosine similarity. |
 | `@deepseek-ai/dsh-tool-str-replace-editor` | yes | Model-facing view, create, literal replace, and line insert tool over the Harness filesystem service |
 
 ## goal

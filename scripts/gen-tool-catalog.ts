@@ -49,9 +49,6 @@ import * as ToolCordis from '@deepseek-ai/dsh-tool-cordis'
 import * as ToolPresent from '@deepseek-ai/dsh-tool-present'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import * as ToolFsSearch from '@deepseek-ai/dsh-tool-fs-search'
-import * as ToolMemory from '@deepseek-ai/dsh-tool-memory-filesystem'
-import * as ToolMemoryGraph from '@deepseek-ai/dsh-tool-memory-graph'
-import * as ToolMemoryVector from '@deepseek-ai/dsh-tool-memory-vector'
 import * as ToolStrReplaceEditor from '@deepseek-ai/dsh-tool-str-replace-editor'
 import TerminalSessionService from '@deepseek-ai/dsh-terminal'
 import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
@@ -421,47 +418,6 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'glob and grep are unconditional discovery tools that spawn the packaged ripgrep binary (`@vscode/ripgrep`) through ctx.subprocess as ordinary foreground calls (never background jobs) — no host `rg` install and no shell layer. The catalog uses `sampleOverCapGlobResults: true`; deployments must choose that behavior explicitly. Capped results save the complete formatted list through the optional ctx.spillStore backend; returned locators are follow-up-readable/searchable when the backend exposes local paths in co-located deployments.',
-  },
-  {
-    pkg: '@deepseek-ai/dsh-tool-memory-filesystem',
-    dir: 'tool-memory-filesystem',
-    source: 'packages/fs/tool-memory-filesystem/src/index.ts',
-    requires: ['ctx.tools', 'ctx.systemPrompt (transitive through ToolRuntime)'],
-    writes: ['tool/call', 'tool/result'],
-    async mount(ctx) {
-      await ctx.plugin(ToolMemory)
-    },
-    note:
-      'Filesystem-backed wiki/memory tools: wiki_read parses YAML frontmatter and follows Obsidian-style [[link]] references, wiki_search keyword-searches the vault, and wiki_write creates or appends notes. Path containment is enforced against the vault root resolved per call — the configured vaultRoot or, when unset, `.dsh/memory/` under the session workspace.',
-  },
-  {
-    pkg: '@deepseek-ai/dsh-tool-memory-graph',
-    dir: 'tool-memory-graph',
-    source: 'packages/fs/tool-memory-graph/src/index.ts',
-    requires: ['ctx.tools', 'ctx.systemPrompt (transitive through ToolRuntime)'],
-    writes: ['tool/call', 'tool/result'],
-    async mount(ctx) {
-      await ctx.plugin(ToolMemoryGraph)
-    },
-    note:
-      'Read-only [[link]] graph queries over the same vault resolution as `@deepseek-ai/dsh-tool-memory-filesystem`: wiki_graph returns every note and edge, or the reachable subgraph around one note within a configured depth. The package reuses the filesystem plugin\'s parsing helpers; it never writes to the vault.',
-  },
-  {
-    pkg: '@deepseek-ai/dsh-tool-memory-vector',
-    dir: 'tool-memory-vector',
-    source: 'packages/fs/tool-memory-vector/src/index.ts',
-    requires: ['ctx.tools', 'ctx.systemPrompt (transitive through ToolRuntime)', 'network access to the configured embeddings endpoint'],
-    writes: ['tool/call', 'tool/result'],
-    async mount(ctx) {
-      // Schema harvest only: registration validates endpoint/model presence, so
-      // the catalog mounts a placeholder that no executor ever calls.
-      await ctx.plugin(ToolMemoryVector, {
-        endpoint: 'http://catalog.invalid/v1/embeddings',
-        model: 'catalog',
-      })
-    },
-    note:
-      'wiki_semantic_search ranks notes by cosine similarity over embeddings fetched from a configurable OpenAI-compatible endpoint, with per-note embeddings cached by file mtime in `.vector-index.json` under the resolved vault root. The tool complements — never replaces — wiki_search keyword retrieval.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-terminal',

@@ -32,12 +32,6 @@ Seven packages play the filesystem roles; the subsystem reference owns the exhau
 | [`fs-observation-policy/`](fs-observation-policy/README.md) | Read-before-edit policy: records observed presence or absence and guards write/edit through the `fs/*` events | `fs/*` listeners |
 | [`tool-fs/`](tool-fs/README.md) | Model-facing `read`, `read_image`, `write`, and `edit` tools plus their executor | registers on `ctx.tools` |
 | [`tool-fs-search/`](tool-fs-search/README.md) | Model-facing `glob` and `grep` discovery tools backed by the packaged ripgrep binary | registers on `ctx.tools` |
-| [`tool-memory-filesystem/`](tool-memory-filesystem/README.md) | Model-facing `wiki_read`, `wiki_search`, and `wiki_write` tools over a Markdown vault with frontmatter and Obsidian-style links | registers on `ctx.tools` |
-| [`tool-memory-graph/`](tool-memory-graph/README.md) | Model-facing `wiki_graph` tool returning the vault's `[[link]]` graph or a note-centered subgraph | registers on `ctx.tools` |
-| [`memory-queue/`](memory-queue/README.md) | Serializes selected tool dispatches (default `wiki_write`) through the `tools/execute` waterfall | `tools/execute` listener |
-| [`memory-scope/`](memory-scope/README.md) | Rewrites selected tool ids (default `wiki_write`) into per-agent namespaces through the `tools/execute` waterfall | `tools/execute` listener |
-| [`memory-git/`](memory-git/README.md) | Commits successful memory-tool writes (default `wiki_write`) to git through the `tools/execute` waterfall | `tools/execute` listener |
-| [`tool-memory-vector/`](tool-memory-vector/README.md) | Model-facing `wiki_semantic_search` tool ranking notes by embedding similarity through a configurable endpoint | registers on `ctx.tools` |
 | [`tool-str-replace-editor/`](tool-str-replace-editor/README.md) | Standalone `str_replace_editor` tool: `view`, `create`, `str_replace`, and `insert` over `ctx.fs` | registers on `ctx.tools` |
 
 The policy is a plugin, not a service the tools inject: removing it leaves the bare provider's unconditional mutation behavior instead of breaking the tools. The mode fence in `fs-sandbox` and the read-before-edit gate compose. `tool-fs-search` deliberately does not extend the provider contract — search is a process-backed ripgrep workflow, so filesystem backends stay free of a universal search API.
