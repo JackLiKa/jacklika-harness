@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -26,21 +26,24 @@ function resultText(result: { content: { type: string; text?: string }[] }): str
 }
 
 /**
- * Boot a cordis.yml carrying the memory-filesystem tool and a vault directory.
- * @param vaultRoot - absolute path to the vault root.
+ * Boot a cordis.yml carrying the memory-filesystem tool and an optional vault
+ * directory. When `vaultRoot` is omitted the plugin resolves the memory root
+ * per tool call from the session workspace.
+ * @param vaultRoot - absolute path to the vault root, or undefined for
+ *   session-workspace defaulting.
  * @returns the booted context.
  */
-async function boot(vaultRoot: string): Promise<Context> {
+async function boot(vaultRoot?: string): Promise<Context> {
   root = await mkdtemp(join(tmpdir(), 'dsh-memory-loader-'))
   const configPath = join(root, 'cordis.yml')
-  await writeFile(configPath, [
+  const configLines = [
     "- name: '@deepseek-ai/dsh-system-prompt'",
     "- name: '@deepseek-ai/dsh-tools'",
     "- name: '@deepseek-ai/dsh-tool-memory-filesystem'",
-    '  config:',
-    `    vaultRoot: ${vaultRoot}`,
+    ...vaultRoot !== undefined ? ['  config:', `    vaultRoot: ${vaultRoot}`] : [],
     '',
-  ].join('\n'))
+  ]
+  await writeFile(configPath, configLines.join('\n'))
 
   const ctx = new Context()
   context = ctx
@@ -151,5 +154,37 @@ describe('tool-memory-filesystem real Loader composition through cordis.yml', ()
       arguments: { id: '../embedding.md' },
     })
     expect(result.isError).toBe(true)
+  })
+
+  it('defaults the vault to the calling session workspace under .dsh/memory', async () => {
+    const workspace = await mkdtemp(join(tmpdir(), 'dsh-memory-workspace-'))
+    const ctx = await boot()
+    const agent = { session: { header: { cwd: workspace } } } as never
+
+    const writeResult = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: ToolCallId('write-workspace-note'),
+      name: 'wiki_write',
+      arguments: { id: 'daily/2026-09-24.md', content: 'Workspace note.' },
+      agent,
+    })
+    expect(writeResult.isError).toBe(false)
+    if (writeResult.isError) throw new Error('expected wiki_write success')
+
+    const memoryFile = join(workspace, '.dsh', 'memory', 'daily', '2026-09-24.md')
+    const text = await readFile(memoryFile, 'utf8')
+    expect(text).toContain('Workspace note.')
+
+    const readResult = await ctx.tools.execute({
+      signal: new AbortController().signal,
+      callId: ToolCallId('read-workspace-note'),
+      name: 'wiki_read',
+      arguments: { id: 'daily/2026-09-24.md' },
+      agent,
+    })
+    expect(readResult.isError).toBe(false)
+    if (readResult.isError) throw new Error('expected wiki_read success')
+    const note = JSON.parse(resultText(readResult)) as { id: string }
+    expect(note.id).toBe('daily/2026-09-24.md')
   })
 })

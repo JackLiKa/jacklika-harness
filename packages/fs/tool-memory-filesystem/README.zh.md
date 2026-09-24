@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-tool-memory-filesystem` 让 agent 可以读取、搜索和追加本地 Markdown 仓库中的笔记。笔记是普通的 `.md` 文件，可包含 YAML frontmatter 和 Obsidian 风格 `[[link]]` 链接。部署时以 Cordis 插件形式挂载并配置 `vaultRoot`；模型会看到 `wiki_read`、`wiki_search` 和 `wiki_write` 三个工具。MVP 不需要向量数据库，只使用文件名和关键词搜索，并通过链接跟随保证上下文完整。
+`dsh-tool-memory-filesystem` 让 agent 可以读取、搜索和追加本地 Markdown 仓库中的笔记。笔记是普通的 `.md` 文件，可包含 YAML frontmatter 和 Obsidian 风格 `[[link]]` 链接。部署时以 Cordis 插件形式挂载即可；默认情况下每个会话使用自己工作区下的 `<session cwd>/.dsh/memory/` 作为仓库，因此每个项目拥有独立的记忆库。需要共享仓库时可显式配置 `vaultRoot`。模型会看到 `wiki_read`、`wiki_search` 和 `wiki_write` 三个工具。MVP 不需要向量数据库，只使用文件名和关键词搜索，并通过链接跟随保证上下文完整。
 
 ## 目录
 
@@ -28,15 +28,23 @@ kind: "package-reference"
 
 ```yaml
 - name: '@deepseek-ai/dsh-tool-memory-filesystem'
+```
+
+此后每个会话使用 `<session cwd>/.dsh/memory/` 作为自己的仓库。需要跨会话共享一个仓库时，显式指定根目录：
+
+```yaml
+- name: '@deepseek-ai/dsh-tool-memory-filesystem'
   config:
     vaultRoot: /path/to/obsidian-vault
 ```
+
+相对路径的 `vaultRoot` 会相对于调用会话的工作区解析。
 
 ### 配置仓库
 
 | 字段 | 类型 | 默认值 | 说明 |
 |---|---|---|---|
-| `vaultRoot` | `string` | `process.cwd()` | Markdown 仓库根目录，绝对或相对路径。 |
+| `vaultRoot` | `string` | `''` → `<session cwd>/.dsh/memory/` | 仓库根目录。留空表示使用按工作区隔离的记忆目录；相对路径相对于会话工作区解析。 |
 | `extensions` | `string[]` | `['.md']` | 视为笔记的文件扩展名。 |
 | `maxLinkDepth` | `number` | `1` | `wiki_read` 解析 `[[link]]` 的最大深度。 |
 | `maxSearchResults` | `number` | `20` | `wiki_search` 返回的最大结果数。 |
@@ -49,14 +57,14 @@ kind: "package-reference"
 
 ### 安全
 
-所有路径都必须在 `vaultRoot` 下；越界路径会被拒绝。该插件不通过 `ctx.fs` 访问文件，因此不继承文件沙箱策略；访问权限由 OS 文件权限和本插件的越界检查共同控制。
+所有路径都必须在该次调用解析出的仓库根目录下；越界路径会被拒绝。该插件不通过 `ctx.fs` 访问文件，因此不继承文件沙箱策略；访问权限由 OS 文件权限和本插件的越界检查共同控制。
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## 实现说明
 
-本包是一个没有运行时服务的 Cordis 函数插件，只在 `ctx.tools` 上注册三个类型化工具。每个工具都通过 `node:fs/promises` 直接读取 Markdown 文件，并借助 `path.resolve` + 前缀检查保持在 `vaultRoot` 内。YAML frontmatter 使用 `js-yaml` 解析；`[[link|alias]]` 形式的引用会提取管道符前的目标。搜索时从仓库内容构建临时索引，并按反向链接数量排序。
+本包是一个没有运行时服务的 Cordis 函数插件，只在 `ctx.tools` 上注册三个类型化工具。仓库根目录在每次工具调用时解析：优先使用显式 `vaultRoot`（相对路径锚定会话工作区），否则使用 `<session cwd>/.dsh/memory/`，使每个工作区拥有自己的笔记。每个工具都通过 `node:fs/promises` 直接读取 Markdown 文件，并借助 `path.resolve` + 前缀检查保持在解析出的根目录内。YAML frontmatter 使用 `js-yaml` 解析；`[[link|alias]]` 形式的引用会提取管道符前的目标。搜索时从仓库内容构建临时索引，并按反向链接数量排序。
 
 -----
 

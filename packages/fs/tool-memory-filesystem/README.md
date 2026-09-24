@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-`dsh-tool-memory-filesystem` gives agents read, search, and append access to a local Markdown vault. Notes are ordinary `.md` files with optional YAML frontmatter and Obsidian-style `[[link]]` references. A deployment mounts this package as a Cordis plugin and configures a `vaultRoot`; the model sees `wiki_read`, `wiki_search`, and `wiki_write` tools. No vector database is required — the MVP uses filename and keyword search, with link following for contextual completeness.
+`dsh-tool-memory-filesystem` gives agents read, search, and append access to a local Markdown vault. Notes are ordinary `.md` files with optional YAML frontmatter and Obsidian-style `[[link]]` references. A deployment mounts this package as a Cordis plugin; by default each session reads and writes notes under its own workspace at `<session cwd>/.dsh/memory/`, so every project keeps a private memory store. An explicit `vaultRoot` can pin one shared vault instead. The model sees `wiki_read`, `wiki_search`, and `wiki_write` tools. No vector database is required — the MVP uses filename and keyword search, with link following for contextual completeness.
 
 ## Table of Contents
 
@@ -28,15 +28,23 @@ Mount the plugin in a profile or patch file:
 
 ```yaml
 - name: '@deepseek-ai/dsh-tool-memory-filesystem'
+```
+
+Each session then uses `<session cwd>/.dsh/memory/` as its vault. To share one vault across sessions, set an explicit root:
+
+```yaml
+- name: '@deepseek-ai/dsh-tool-memory-filesystem'
   config:
     vaultRoot: /path/to/obsidian-vault
 ```
+
+A relative `vaultRoot` resolves against the calling session's workspace.
 
 ### Configure the vault
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `vaultRoot` | `string` | `process.cwd()` | Absolute or process-relative root of the Markdown vault. |
+| `vaultRoot` | `string` | `''` → `<session cwd>/.dsh/memory/` | Vault root. Empty selects the per-workspace memory directory; a relative path resolves against the session workspace. |
 | `extensions` | `string[]` | `['.md']` | File extensions treated as notes. |
 | `maxLinkDepth` | `number` | `1` | Maximum `[[link]]` hops `wiki_read` resolves. |
 | `maxSearchResults` | `number` | `20` | Maximum `wiki_search` hits. |
@@ -49,14 +57,14 @@ Mount the plugin in a profile or patch file:
 
 ### Security
 
-All paths are resolved under `vaultRoot`; a path that escapes the vault is rejected. The plugin does not use `ctx.fs`, so the configured filesystem sandbox policy does not apply; vault access is governed by OS permissions and this containment check.
+All paths are resolved under the vault root for that call; a path that escapes the vault is rejected. The plugin does not use `ctx.fs`, so the configured filesystem sandbox policy does not apply; vault access is governed by OS permissions and this containment check.
 
 -----
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-This package is a single Cordis function plugin with no runtime service. It registers three typed tools on `ctx.tools`. Each tool reads Markdown files directly through `node:fs/promises` and stays inside `vaultRoot` via `path.resolve` + prefix checking. YAML frontmatter is parsed with `js-yaml`; `[[link|alias]]` references extract the target before the pipe. Search builds a transient index from the vault contents and sorts hits by backlink count.
+This package is a single Cordis function plugin with no runtime service. It registers three typed tools on `ctx.tools`. The vault root is resolved per tool call: the explicit `vaultRoot` config when set (relative paths anchor at the session workspace), otherwise `<session cwd>/.dsh/memory/` so each workspace owns its notes. Each tool reads Markdown files directly through `node:fs/promises` and stays inside the resolved root via `path.resolve` + prefix checking. YAML frontmatter is parsed with `js-yaml`; `[[link|alias]]` references extract the target before the pipe. Search builds a transient index from the vault contents and sorts hits by backlink count.
 
 -----
 

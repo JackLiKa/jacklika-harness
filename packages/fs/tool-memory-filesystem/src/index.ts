@@ -9,10 +9,10 @@
  */
 
 import { readdir, readFile, stat, writeFile, mkdir } from 'node:fs/promises'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import yaml from 'js-yaml'
 import type { Note, SearchResult } from './types.ts'
@@ -27,7 +27,11 @@ export const inject = ['tools']
 
 /** Plugin configuration. */
 export interface Config {
-  /** Absolute or process-relative root of the Markdown vault. */
+  /**
+   * Explicit vault root. When omitted, each tool call resolves the memory
+   * directory under the calling session's workspace (`<cwd>/.dsh/memory/`).
+   * A relative path is resolved against the session workspace.
+   */
   vaultRoot?: string
   /** File extensions to treat as notes. */
   extensions?: string[]
@@ -39,23 +43,14 @@ export interface Config {
 
 /** Schemastery configuration for the filesystem memory tool consumer. */
 export const Config: z<Config> = z.object({
-  vaultRoot: z.string().default(process.cwd()),
+  vaultRoot: z.string().default(''),
   extensions: z.array(z.string()).default(['.md']),
   maxLinkDepth: z.number().default(1),
   maxSearchResults: z.number().default(20),
 })
 
-/** The shape after schemastery applied the defaults. */
+/** The shape after schemastery applied the defaults; `vaultRoot` is `''` when unset. */
 type ResolvedConfig = Required<Config>
-
-/**
- * Normalize the configured vault root to an absolute path.
- * @param raw - the raw config value.
- * @returns an absolute, resolved path.
- */
-function resolveVaultRoot(raw: string): string {
-  return resolve(raw)
-}
 
 /**
  * Reject paths that escape the vault root. The check resolves the candidate,
@@ -302,9 +297,23 @@ function assertPositiveInteger(name: string, value: number): void {
  */
 export function apply(ctx: Context, config: Config): void {
   const resolved = config as ResolvedConfig
-  const vaultRoot = resolveVaultRoot(resolved.vaultRoot)
   assertPositiveInteger('maxLinkDepth', resolved.maxLinkDepth)
   assertPositiveInteger('maxSearchResults', resolved.maxSearchResults)
+
+  /**
+   * Compute the vault root for this tool call: an explicit `vaultRoot` wins,
+   * resolved relative to the session workspace; otherwise every session gets
+   * `<session cwd>/.dsh/memory/` so each workspace owns its notes.
+   * @param exec - the current tool execution carrying the agent session.
+   * @returns absolute vault root for this call.
+   */
+  const vaultRootFor = (exec: ToolRunContext): string => {
+    const sessionCwd = exec.agent?.session.header.cwd ?? process.cwd()
+    if (resolved.vaultRoot === '') {
+      return join(sessionCwd, '.dsh', 'memory')
+    }
+    return isAbsolute(resolved.vaultRoot) ? resolved.vaultRoot : resolve(sessionCwd, resolved.vaultRoot)
+  }
 
   ctx.tools.register(defineTool({
     name: 'wiki_read',
@@ -320,7 +329,8 @@ export function apply(ctx: Context, config: Config): void {
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      const vaultRoot = vaultRootFor(exec)
       const absolutePath = containedPath(vaultRoot, args.id)
       const note = await readNote(vaultRoot, resolved.extensions, resolved.maxLinkDepth, absolutePath)
       return note as unknown as JsonValue
@@ -352,7 +362,8 @@ export function apply(ctx: Context, config: Config): void {
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      const vaultRoot = vaultRootFor(exec)
       const index = await buildIndex(vaultRoot, resolved.extensions)
       const terms = args.query.toLowerCase().split(/\s+/).filter(Boolean)
       const hits: SearchResult[] = []
@@ -399,7 +410,8 @@ export function apply(ctx: Context, config: Config): void {
       },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      const vaultRoot = vaultRootFor(exec)
       const mode = args.mode ?? 'append'
       const absolutePath = containedPath(vaultRoot, args.id)
       const hasExtension = resolved.extensions.some(ext => args.id.endsWith(dottedExtension(ext)))

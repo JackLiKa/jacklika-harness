@@ -3471,7 +3471,11 @@ Requires: `tools`
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
-  /** Absolute or process-relative root of the Markdown vault. */
+  /**
+   * Explicit vault root. When omitted, each tool call resolves the memory
+   * directory under the calling session's workspace (`<cwd>/.dsh/memory/`).
+   * A relative path is resolved against the session workspace.
+   */
   vaultRoot?: string
   /** File extensions to treat as notes. */
   extensions?: string[]
