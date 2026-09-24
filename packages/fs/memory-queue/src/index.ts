@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-memory-queue
  */
 
-import { mkdir, rm, stat } from 'node:fs/promises'
+import { mkdir, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -40,8 +40,10 @@ export interface Config {
    * dispatch so separate processes cannot interleave matching tool calls.
    */
   crossProcessLock?: boolean
-  /** A lock directory untouched for this long counts as abandoned and is reclaimed. */
+  /** A lock directory unrefreshed for this long counts as abandoned and is reclaimed. */
   lockStaleMs?: number
+  /** Interval at which the holder refreshes the lock directory mtime. */
+  lockHeartbeatMs?: number
   /** Give up waiting for a held lock after this many milliseconds. */
   lockTimeoutMs?: number
   /** Delay between lock acquisition attempts. */
@@ -53,7 +55,8 @@ export const Config: z<Config> = z.object({
   toolNames: z.array(z.string()).default(['wiki_write']),
   vaultRoot: z.string().default(''),
   crossProcessLock: z.boolean().default(false),
-  lockStaleMs: z.number().default(60000),
+  lockStaleMs: z.number().default(15000),
+  lockHeartbeatMs: z.number().default(2000),
   lockTimeoutMs: z.number().default(30000),
   lockRetryMs: z.number().default(100),
 })
@@ -71,11 +74,14 @@ const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(r
 
 /**
  * Acquire the vault's lock directory, waiting for foreign holders and
- * reclaiming stale locks whose holder died without releasing.
+ * reclaiming stale locks whose heartbeat stopped. The holder refreshes the
+ * directory mtime every `lockHeartbeatMs`, so `lockStaleMs` only bounds
+ * heartbeat loss — not dispatch duration — and a slow live write is never
+ * reclaimed.
  * @param lockPath - absolute path of the lock directory.
  * @param resolved - applied plugin configuration.
  * @param signal - caller signal; an aborted caller fails instead of waiting.
- * @returns release callback that removes the lock directory.
+ * @returns release callback that stops the heartbeat and removes the lock directory.
  */
 async function acquireLock(
   lockPath: string,
@@ -87,14 +93,25 @@ async function acquireLock(
     signal.throwIfAborted()
     try {
       await mkdir(lockPath)
+      // Owner metadata is diagnostic only; never gate behavior on it.
+      await writeFile(join(lockPath, 'owner.json'), JSON.stringify({
+        pid: process.pid,
+        startedAt: new Date().toISOString(),
+      }), 'utf8').catch(() => undefined)
+      const heartbeat = setInterval(() => {
+        const now = new Date()
+        utimes(lockPath, now, now).catch(() => undefined)
+      }, resolved.lockHeartbeatMs)
+      heartbeat.unref()
       return async () => {
+        clearInterval(heartbeat)
         await rm(lockPath, { recursive: true, force: true })
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
       const info = await stat(lockPath).catch(() => undefined)
       if (info !== undefined && Date.now() - info.mtimeMs > resolved.lockStaleMs) {
-        // The holder died without releasing; reclaim and retry.
+        // The holder's heartbeat stopped; reclaim and retry.
         await rm(lockPath, { recursive: true, force: true })
         continue
       }
@@ -121,8 +138,12 @@ export function apply(ctx: Context, config: Config): void {
     throw new Error('memory-queue: toolNames must not be empty')
   }
   assertPositiveInteger('lockStaleMs', resolved.lockStaleMs)
+  assertPositiveInteger('lockHeartbeatMs', resolved.lockHeartbeatMs)
   assertPositiveInteger('lockTimeoutMs', resolved.lockTimeoutMs)
   assertPositiveInteger('lockRetryMs', resolved.lockRetryMs)
+  if (resolved.lockStaleMs <= resolved.lockHeartbeatMs * 2) {
+    throw new Error('memory-queue: lockStaleMs must exceed twice lockHeartbeatMs so one missed heartbeat is not fatal')
+  }
   const names = new Set(resolved.toolNames)
   let tail: Promise<void> = Promise.resolve()
 

@@ -132,6 +132,7 @@ describe('memory-queue real Loader composition through cordis.yml', () => {
       '    crossProcessLock: true',
       `    vaultRoot: ${vault}`,
       '    lockStaleMs: 500',
+      '    lockHeartbeatMs: 100',
       '    lockTimeoutMs: 200',
       '    lockRetryMs: 20',
     ])
@@ -151,5 +152,37 @@ describe('memory-queue real Loader composition through cordis.yml', () => {
     const blocked = await call(ctx, 'blocked')
     expect(blocked.isError).toBe(true)
     await rm(lockPath, { recursive: true, force: true })
+  })
+
+  it('does not reclaim a lock whose holder keeps the mtime fresh', async () => {
+    const vault = await mkdtemp(join(tmpdir(), 'dsh-queue-vault-'))
+    const ctx = await boot([
+      '    crossProcessLock: true',
+      `    vaultRoot: ${vault}`,
+      '    lockStaleMs: 400',
+      '    lockHeartbeatMs: 100',
+      '    lockTimeoutMs: 700',
+      '    lockRetryMs: 50',
+    ])
+    const intervals: Interval[] = []
+    registerSlowTool(ctx, intervals)
+
+    // A foreign holder that refreshes its lock must survive past lockStaleMs:
+    // liveness is heartbeat-based, so a slow live write is never reclaimed.
+    const lockPath = join(vault, '.memory-queue.lock')
+    await mkdir(lockPath)
+    const refresh = setInterval(() => {
+      const now = new Date()
+      void utimes(lockPath, now, now).catch(() => undefined)
+    }, 100)
+    try {
+      const blocked = await call(ctx, 'still-held')
+      expect(blocked.isError).toBe(true)
+      // The lock must still exist: it was never treated as stale.
+      await expect(stat(lockPath)).resolves.toBeDefined()
+    } finally {
+      clearInterval(refresh)
+      await rm(lockPath, { recursive: true, force: true })
+    }
   })
 })

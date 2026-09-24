@@ -2031,8 +2031,10 @@ export interface Config {
    * dispatch so separate processes cannot interleave matching tool calls.
    */
   crossProcessLock?: boolean
-  /** A lock directory untouched for this long counts as abandoned and is reclaimed. */
+  /** A lock directory unrefreshed for this long counts as abandoned and is reclaimed. */
   lockStaleMs?: number
+  /** Interval at which the holder refreshes the lock directory mtime. */
+  lockHeartbeatMs?: number
   /** Give up waiting for a held lock after this many milliseconds. */
   lockTimeoutMs?: number
   /** Delay between lock acquisition attempts. */

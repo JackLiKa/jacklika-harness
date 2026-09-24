@@ -65,7 +65,7 @@ All paths are resolved under the vault root for that call; a path that escapes t
 <a id="understand-the-implementation"></a>
 ## Understand the implementation
 
-This package is a single Cordis function plugin with no runtime service. It registers three typed tools on `ctx.tools`. The vault root is resolved per tool call: the explicit `vaultRoot` config when set (relative paths anchor at the session workspace), otherwise `<session cwd>/.dsh/memory/` so each workspace owns its notes. Each tool reads Markdown files directly through `node:fs/promises` and stays inside the resolved root via `path.resolve` + prefix checking. YAML frontmatter is parsed with `js-yaml`; `[[link|alias]]` references extract the target before the pipe. Search builds a transient index from the vault contents and sorts hits by backlink count.
+This package is a single Cordis function plugin with no runtime service. It registers three typed tools on `ctx.tools`. The vault root is resolved per tool call: the explicit `vaultRoot` config when set (relative paths anchor at the session workspace), otherwise `<session cwd>/.dsh/memory/` so each workspace owns its notes. Each tool reads Markdown files directly through `node:fs/promises` and stays inside the resolved root via `path.resolve` + prefix checking. YAML frontmatter is parsed with `js-yaml`; `[[link|alias]]` references extract the target before the pipe. Search builds a transient index from the vault contents and sorts hits by backlink count. `wiki_write` publishes atomically: the body is staged in a sibling temp file and `rename`d over the target, so concurrent readers never observe a partially written note.
 
 -----
 
@@ -111,7 +111,7 @@ Independent. The plugin only supplies tool results; it does not change the reque
 - **No sandbox policy integration** — the plugin reads files directly, so it bypasses the `ctx.fs` sandbox and approval gates. A future provider could delegate reads to `ctx.fs` to inherit policy.
 - **No vector search** — search is keyword-only. A separate `tool-memory-vector` package could add embedding-based retrieval without changing this package.
 - **No embedded image or binary support** — notes are treated as UTF-8 text. Attachments should remain in the attachment seam.
-- **No built-in write coordination** — simultaneous `wiki_write` calls to the same note can race. Mount `@deepseek-ai/dsh-memory-queue` for in-process serialization, optionally with a cross-process lock directory.
+- **No built-in write coordination** — writes are atomic (temp file + `rename`), so readers never see partial files, but simultaneous `wiki_write` calls to the same note can still lose updates. Mount `@deepseek-ai/dsh-memory-queue` for in-process serialization, optionally with a heartbeat-refreshed cross-process lock.
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -65,7 +65,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 实现说明
 
-本包是一个没有运行时服务的 Cordis 函数插件，只在 `ctx.tools` 上注册三个类型化工具。仓库根目录在每次工具调用时解析：优先使用显式 `vaultRoot`（相对路径锚定会话工作区），否则使用 `<session cwd>/.dsh/memory/`，使每个工作区拥有自己的笔记。每个工具都通过 `node:fs/promises` 直接读取 Markdown 文件，并借助 `path.resolve` + 前缀检查保持在解析出的根目录内。YAML frontmatter 使用 `js-yaml` 解析；`[[link|alias]]` 形式的引用会提取管道符前的目标。搜索时从仓库内容构建临时索引，并按反向链接数量排序。
+本包是一个没有运行时服务的 Cordis 函数插件，只在 `ctx.tools` 上注册三个类型化工具。仓库根目录在每次工具调用时解析：优先使用显式 `vaultRoot`（相对路径锚定会话工作区），否则使用 `<session cwd>/.dsh/memory/`，使每个工作区拥有自己的笔记。每个工具都通过 `node:fs/promises` 直接读取 Markdown 文件，并借助 `path.resolve` + 前缀检查保持在解析出的根目录内。YAML frontmatter 使用 `js-yaml` 解析；`[[link|alias]]` 形式的引用会提取管道符前的目标。搜索时从仓库内容构建临时索引，并按反向链接数量排序。`wiki_write` 以原子方式发布：正文先写入同级临时文件，再 `rename` 覆盖目标，因此并发读者永远不会读到写了一半的笔记。
 
 -----
 
@@ -111,7 +111,7 @@ Create a new note or append to an existing note in the wiki vault. The path is r
 - **未接入沙箱策略** — 插件直接读取文件，绕过 `ctx.fs` 沙箱与审批机制。未来可以提供委托给 `ctx.fs` 的 provider 以继承策略。
 - **无向量搜索** — 仅支持关键词搜索。未来可新增 `tool-memory-vector` 包提供基于 embedding 的检索，而无需修改本包。
 - **不支持图片或二进制附件** — 笔记按 UTF-8 文本处理。附件应继续使用 attachment 体系。
-- **无内置写协调** —— 对同一笔记的并发 `wiki_write` 可能产生竞态。挂载 `@deepseek-ai/dsh-memory-queue` 可获得进程内串行化，并可选用跨进程锁目录。
+- **无内置写协调** —— 写入是原子的（临时文件 + `rename`），读者不会看到半写文件，但对同一笔记的并发 `wiki_write` 仍可能丢更新。挂载 `@deepseek-ai/dsh-memory-queue` 可获得进程内串行化，并可选用心跳刷新的跨进程锁。
 
 <a id="dev-note"></a>
 ### 开发备注

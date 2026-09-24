@@ -8,7 +8,8 @@
  * @module @deepseek-ai/dsh-tool-memory-filesystem
  */
 
-import { readdir, readFile, stat, writeFile, mkdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { readdir, readFile, rename, rm, stat, writeFile, mkdir } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -319,6 +320,24 @@ export async function buildIndex(
   return index
 }
 
+/**
+ * Write `contents` to `absolutePath` atomically: stage into a sibling temp
+ * file, then `rename` over the target so concurrent readers never observe a
+ * partially written note.
+ * @param absolutePath - final note path inside the vault.
+ * @param contents - complete file body to publish.
+ */
+async function writeAtomic(absolutePath: string, contents: string): Promise<void> {
+  const tmpPath = `${absolutePath}.tmp-${process.pid}-${randomUUID()}`
+  try {
+    await writeFile(tmpPath, contents, 'utf8')
+    await rename(tmpPath, absolutePath)
+  } catch (error) {
+    await rm(tmpPath, { force: true }).catch(() => undefined)
+    throw error
+  }
+}
+
 /** Validate a positive-integer config bound. */
 function assertPositiveInteger(name: string, value: number): void {
   if (!Number.isInteger(value) || value < 1) {
@@ -460,7 +479,7 @@ export function apply(ctx: Context, config: Config): void {
         const timestamp = new Date().toISOString()
         finalBody = `${frontmatterText}${body}\n\n## ${timestamp}\n\n${args.content}\n`
       }
-      await writeFile(absolutePath, finalBody, 'utf8')
+      await writeAtomic(absolutePath, finalBody)
       return { id: relative(vaultRoot, absolutePath), mode, bytes: Buffer.byteLength(finalBody, 'utf8') }
     },
   }))
