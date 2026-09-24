@@ -430,7 +430,7 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(ToolMemory)
     },
     note:
-      'Filesystem-backed wiki/memory tools: wiki_read parses YAML frontmatter and follows Obsidian-style [[link]] references, wiki_search keyword-searches the vault, and wiki_write creates or appends notes. Path containment is enforced against the configured vaultRoot.',
+      'Filesystem-backed wiki/memory tools: wiki_read parses YAML frontmatter and follows Obsidian-style [[link]] references, wiki_search keyword-searches the vault, and wiki_write creates or appends notes. Path containment is enforced against the vault root resolved per call — the configured vaultRoot or, when unset, `.dsh/memory/` under the session workspace.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-terminal',

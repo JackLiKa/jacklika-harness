@@ -16,15 +16,13 @@ dsh 已有丰富的事件溯源会话记忆，但缺少用户可长期拥有的�
 - `wiki_search(query)` — 按标题、id 和正文关键词搜索；结果包含反向链接数量。
 - `wiki_write(id, content, mode?)` — 创建或追加笔记。追加模式保留 frontmatter 并添加时间戳标题。
 
-该插件是可选启用的：通过 profile patch 挂载并设置 `vaultRoot`：
+该插件是可选启用的：通过 profile patch 挂载，`vaultRoot` 可选：
 
 ```yaml
 - name: '@deepseek-ai/dsh-tool-memory-filesystem'
-  config:
-    vaultRoot: /path/to/obsidian-vault
 ```
 
-未挂载该插件时，默认会话记忆行为保持不变。
+未设置 `vaultRoot` 时，每次工具调用把仓库解析到 `<session cwd>/.dsh/memory/`，使每个项目工作区拥有独立的记忆库；显式 `vaultRoot` 则固定一个共享仓库，相对路径锚定会话工作区。未挂载该插件时，默认会话记忆行为保持不变。
 
 ## 替代方案
 
@@ -49,6 +47,7 @@ dsh 已有丰富的事件溯源会话记忆，但缺少用户可长期拥有的�
   - `wiki_read` 能跟随一层 `[[link]]` 链接，
   - `wiki_search` 按关键词返回结果，
   - `wiki_write` 追加内容同时保留 frontmatter，
-  - 越出 `vaultRoot` 的路径被拒绝。
+  - 越出 `vaultRoot` 的路径被拒绝，
+  - 未设置 `vaultRoot` 时按调用解析到 `<session cwd>/.dsh/memory/`。
 - 重新生成 `tsconfig.base.json` 别名并在 `tsconfig.host.json` 中添加包引用后，`pnpm run typecheck` 通过。
 - 更新了中英双语 README 与 `packages/fs/README.md` 分组页，并运行 `pnpm run doc-sync` 检查文档门控。

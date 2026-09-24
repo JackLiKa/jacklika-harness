@@ -16,15 +16,13 @@ Introduce `@deepseek-ai/dsh-tool-memory-filesystem`, a Cordis plugin in `package
 - `wiki_search(query)` — keyword search across note titles, ids, and bodies; results include backlink counts.
 - `wiki_write(id, content, mode?)` — create or append to a note. Append mode preserves frontmatter and adds a timestamp header.
 
-The plugin is opt-in: a profile patch mounts it and sets `vaultRoot`:
+The plugin is opt-in: a profile patch mounts it, optionally setting `vaultRoot`:
 
 ```yaml
 - name: '@deepseek-ai/dsh-tool-memory-filesystem'
-  config:
-    vaultRoot: /path/to/obsidian-vault
 ```
 
-When the plugin is absent, default session memory behavior is unchanged.
+Without `vaultRoot`, each tool call resolves the vault to `<session cwd>/.dsh/memory/`, so every project workspace owns an isolated memory store; an explicit `vaultRoot` pins one shared vault, with relative paths anchored at the session workspace. When the plugin is absent, default session memory behavior is unchanged.
 
 ## Alternatives considered
 
@@ -49,6 +47,7 @@ When the plugin is absent, default session memory behavior is unchanged.
   - `wiki_read` follows one level of `[[link]]` references,
   - `wiki_search` returns hits by keyword,
   - `wiki_write` appends while preserving frontmatter,
-  - paths outside `vaultRoot` are rejected.
+  - paths outside `vaultRoot` are rejected,
+  - an unset `vaultRoot` resolves to `<session cwd>/.dsh/memory/` per call.
 - `pnpm run typecheck` passes after regenerating `tsconfig.base.json` aliases and adding the package reference to `tsconfig.host.json`.
 - Bilingual README and `packages/fs/README.md` group pages were updated; `pnpm run doc-sync` is run to verify the documentation gates.
