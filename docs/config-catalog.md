@@ -2007,6 +2007,46 @@ export interface ReconnectConfig {
 
 Source: [`packages/mcp/mcp-client/src/index.ts:104`](../packages/mcp/mcp-client/src/index.ts)
 
+<a id="deepseek-aidsh-memory-git"></a>
+
+## `@deepseek-ai/dsh-memory-git`
+
+Requires: `tools`
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Tool names whose successful dispatches are committed. */
+  toolNames?: string[]
+  /** Argument carrying the vault-relative note id. */
+  idArgument?: string
+  /**
+   * Vault root hosting the git repository. Resolved per call with the same
+   * rules as the memory tools: empty selects `<session cwd>/.dsh/memory/`.
+   */
+  vaultRoot?: string
+  /**
+   * Only ids under these prefixes are committed. An empty array commits every
+   * matching write.
+   */
+  prefixes?: string[]
+  /** Run `git init` in the vault when it is not already a repository. */
+  autoInit?: boolean
+  /** Commit author name written into `git -c user.name`. */
+  authorName?: string
+  /** Commit author email written into `git -c user.email`. */
+  authorEmail?: string
+  /** Prefix of each generated commit message; the note id follows it. */
+  commitPrefix?: string
+  /** Retries when `.git/index.lock` is held by another git process. */
+  indexLockRetries?: number
+  /** Delay between `index.lock` retries. */
+  indexLockRetryMs?: number
+}
+```
+
+Source: [`packages/fs/memory-git/src/index.ts:29`](../packages/fs/memory-git/src/index.ts)
+
 <a id="deepseek-aidsh-memory-queue"></a>
 
 ## `@deepseek-ai/dsh-memory-queue`

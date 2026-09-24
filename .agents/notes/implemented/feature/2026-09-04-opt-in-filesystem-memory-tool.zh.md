@@ -39,6 +39,7 @@ dsh 已有丰富的事件溯源会话记忆，但缺少用户可长期拥有的�
 - `@deepseek-ai/dsh-tool-memory-graph` —— `wiki_graph` 返回仓库的 `[[link]]` 节点/边图或以某笔记为中心的子图，复用本包的解析辅助函数。
 - `@deepseek-ai/dsh-memory-scope` —— 通过 `tools/execute` waterfall 以嵌套重派发方式把 `wiki_write`（可配置）的 id 重写为 `agents/<agent key>/<id>`，使不同 agent 在结构上不可能写同一笔记；`shared/` 前缀不划分，交由 queue 或 curator 仲裁，`role: curator` 供汇总部署关闭重写。
 - `@deepseek-ai/dsh-memory-queue` —— 通过 `tools/execute` waterfall 把 `wiki_write`（可配置）调用串行化，提供单写者顺序；可选的 `crossProcessLock` 在仓库根持有 `mkdir` 锁目录，其活性由等待方本地时钟上的变化检测证明（有 `heartbeat` 文件时看计数器，没有时看目录 mtime），使不同 dsh 进程无法交错写入，慢速写入不会被误回收，跨机器时钟偏差也无法伪造过期。`wiki_write` 通过临时文件 + `rename` 原子发布；`wiki_read` 返回 `version` 指纹，`wiki_write` 接受可选 `baseVersion`，在读取后被非协调写入方改动时显式报冲突。
+- `@deepseek-ai/dsh-memory-git` —— 通过 `tools/execute` waterfall 把每次成功的 `wiki_write`（可配置，默认 `shared/` 前缀）提交为 vault git 仓库的 commit，提供版本历史、回滚与审计；挂载在 queue 之后时提交落在仓库锁内。
 - `@deepseek-ai/dsh-tool-memory-vector` —— `wiki_semantic_search` 通过可配置的 OpenAI 兼容端点取 embedding，按余弦相似度排序，向量按 mtime 缓存在仓库内 `.vector-index.json`。
 
 `indexHiddenDirs` 配置项（默认 `false`）让 `vaultRoot` 指向工作区根的部署也能索引 `.dsh/memory/` 中的笔记，同时 `.git`/`node_modules` 始终排除。
