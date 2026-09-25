@@ -30,7 +30,7 @@
     "@deepseek-ai/schemastery": "workspace:~",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/api-logs": "^0.220.0",
-    "@opentelemetry/core": "2.9.0",
+    "@opentelemetry/core": "2.10.0",
     "@opentelemetry/otlp-exporter-base": "^0.220.0",
     "@opentelemetry/otlp-transformer": "^0.220.0",
     "@opentelemetry/resources": "^2.9.0",
